@@ -1,0 +1,12 @@
+{
+  "name": "tahminci-cache",
+  "version": "1.0.0",
+  "description": "Canlı Tahminci API Cache Sunucusu",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
