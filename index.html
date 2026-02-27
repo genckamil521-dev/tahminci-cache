@@ -2119,8 +2119,8 @@ function runMatchAI(fid) {
   if (btn) { btn.disabled = true; btn.innerHTML = '⟳ <span>Analiz yapılıyor...</span>'; }
   if (resultEl) { resultEl.className = 'match-ai-result loading'; resultEl.innerHTML = '<div class="ai-spinner" style="width:10px;height:10px;border-width:1.5px"></div> Analiz yapılıyor...'; }
 
-  // _lastAIKey'i sıfırla ki aynı maç tekrar analiz edilebilsin
-  _lastAIKey = null;
+  // _lastAIKey'i bu maç için set et — maybeRunAI tetiklemesin
+  _lastAIKey = fakeSig.key;
   runAIAnalysis(fakeSig).finally(() => {
     if (btn) { btn.disabled = false; btn.innerHTML = '🤖 <span>AI Analizi</span>'; }
   });
@@ -2234,8 +2234,11 @@ function updateBanner() {
   // 1. Aktif fırsatın sonucunu kontrol et (kazandı mı, değişti mi)
   checkFirsatOutcome(key);
 
-  // Her döngüde: sinyal değiştiyse AI'ı tetikle (Telegram göndermeden)
-  maybeRunAI(top);
+  // Sinyal değiştiyse AI'ı tetikle
+  const prevKey = _lastAIKey;
+  if (key !== prevKey) {
+    maybeRunAI(top);
+  }
 
   // 2. Daha önce gönderildi mi?
   if (_sentKeys.has(key)) return;
