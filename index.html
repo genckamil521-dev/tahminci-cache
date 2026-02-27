@@ -1,0 +1,2391 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Canlı Tahminci — Canlı Maç Analizi</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&family=Barlow:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #05080f;
+    --s1: #0a0e1a;
+    --s2: #0f1525;
+    --s3: #151d30;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --green: #00f0a0;
+    --green-dim: rgba(0,240,160,0.08);
+    --red: #ff3d5a;
+    --red-dim: rgba(255,61,90,0.08);
+    --gold: #ffc85a;
+    --gold-dim: rgba(255,200,90,0.08);
+    --blue: #4da6ff;
+    --blue-dim: rgba(77,166,255,0.08);
+    --text: #dce6f5;
+    --muted: #4a5a78;
+    --live: #ff3d5a;
+  }
+
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    font-weight: 400;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Ambient glow arka plan */
+  body::before {
+    content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(ellipse 900px 600px at 15% 20%, rgba(0,240,160,0.035) 0%, transparent 65%),
+      radial-gradient(ellipse 700px 500px at 85% 80%, rgba(255,61,90,0.035) 0%, transparent 65%),
+      radial-gradient(ellipse 500px 400px at 50% 50%, rgba(77,166,255,0.02) 0%, transparent 70%);
+  }
+
+  /* ── HEADER ─────────────────────────────── */
+  header {
+    position: sticky; top:0; z-index:200;
+    display: flex; align-items:center; justify-content:space-between;
+    padding: 0 32px; height: 60px;
+    background: rgba(5,8,15,0.88);
+    backdrop-filter: blur(24px) saturate(1.4);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900; font-style: italic;
+    font-size: 26px; letter-spacing: 1px;
+    color: var(--green);
+    text-shadow: 0 0 40px rgba(0,240,160,0.5);
+    cursor: pointer;
+    user-select: none;
+  }
+  .logo span { color: var(--text); font-style: normal; }
+
+  .header-right { display:flex; align-items:center; gap:14px; }
+
+  .live-badge {
+    display:flex; align-items:center; gap:6px;
+    background: rgba(255,61,90,0.1);
+    border: 1px solid rgba(255,61,90,0.25);
+    padding: 5px 12px; border-radius:4px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700; font-size:12px; letter-spacing:2px;
+    color: var(--red);
+  }
+  .live-dot {
+    width:6px; height:6px; background:var(--red); border-radius:50%;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .last-update {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--muted);
+    letter-spacing: 0.5px;
+  }
+
+  .refresh-btn {
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    padding: 5px 14px; border-radius:4px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600; font-size:13px; letter-spacing:1px;
+    cursor:pointer; transition:all 0.15s;
+  }
+  .refresh-btn:hover { border-color: var(--green); color: var(--green); }
+  .refresh-btn:disabled { opacity:0.3; cursor:not-allowed; }
+
+  /* ── LAYOUT ─────────────────────────────── */
+  main {
+    position:relative; z-index:1;
+    max-width: 1100px; margin:0 auto;
+    padding: 28px 20px;
+  }
+
+  .section-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600; font-size:11px; letter-spacing:3px;
+    color: var(--muted); text-transform:uppercase;
+    margin-bottom:16px; padding-bottom:10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── LOADING / EMPTY ────────────────────── */
+  .loading {
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:80px 20px; gap:16px;
+  }
+  .spinner {
+    width:36px; height:36px;
+    border: 2px solid var(--s3);
+    border-top-color: var(--green);
+    border-radius:50%; animation:spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .loading p { color:var(--muted); font-size:13px; }
+  .error-box, .empty-box {
+    background:var(--s1); border:1px solid var(--border);
+    border-radius:8px; padding:40px; text-align:center;
+  }
+  .empty-box .icon { font-size:40px; margin-bottom:12px; }
+  .empty-box h3 { color:var(--text); margin-bottom:6px; font-family:'Barlow Condensed',sans-serif; font-size:20px; letter-spacing:1px; }
+  .empty-box p { color:var(--muted); font-size:13px; }
+
+  /* ── CONTROLS BAR ───────────────────────── */
+  .controls-bar {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:16px; flex-wrap:wrap; gap:10px;
+  }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; }
+  .legend-item { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); }
+  .legend-dot { width:7px; height:7px; border-radius:1px; }
+  .filter-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .controls-bar select {
+    background: var(--s2); border: 1px solid var(--border);
+    color: var(--text); padding:6px 10px; border-radius:4px;
+    font-size:12px; font-family:'Barlow',sans-serif;
+    cursor:pointer; outline:none; transition:border-color 0.15s;
+  }
+  .controls-bar select:hover { border-color:var(--border2); }
+  .match-count {
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted);
+    background:var(--s2); border:1px solid var(--border);
+    padding:6px 10px; border-radius:4px;
+  }
+
+  /* ── MATCH LIST ─────────────────────────── */
+  .matches { display:flex; flex-direction:column; gap:2px; margin-bottom:40px; }
+
+  /* ── MATCH CARD ─────────────────────────── */
+  .match-card {
+    background: var(--s1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative; overflow:hidden;
+    animation: card-in 0.4s ease both;
+  }
+  @keyframes card-in {
+    from { opacity:0; transform:translateY(12px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+
+  /* Üst renkli şerit */
+  .match-card::before {
+    content:''; position:absolute;
+    top:0; left:0; right:0; height:2px;
+    background: linear-gradient(90deg, var(--green), transparent);
+    opacity:0; transition:opacity 0.2s;
+    border-radius:10px 10px 0 0;
+  }
+  .match-card:hover::before, .match-card.active::before { opacity:1; }
+  .match-card:hover {
+    border-color: rgba(255,255,255,0.1);
+    background: var(--s2);
+  }
+  .match-card.active {
+    border-color: rgba(0,240,160,0.2);
+    background: var(--s2);
+  }
+
+  /* Kart iç padding bölgesi */
+  .card-inner { padding: 18px 22px 20px; }
+
+  /* ── MATCH HEADER ───────────────────────── */
+  .match-header {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:16px;
+  }
+  .league-info {
+    display:flex; align-items:center; gap:7px;
+    font-size:11px; color:var(--muted); font-weight:500; letter-spacing:0.5px;
+  }
+  .league-logo { width:16px; height:16px; border-radius:2px; object-fit:contain; }
+
+  .match-minute {
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:700; font-size:13px; letter-spacing:1px;
+    color:var(--red); background:rgba(255,61,90,0.1);
+    padding:3px 10px; border-radius:3px;
+    border-left:2px solid var(--red);
+  }
+  .match-minute.ht {
+    color:var(--gold); background:rgba(255,200,90,0.1);
+    border-color:var(--gold);
+  }
+
+  /* ── SKOR SATIRI ────────────────────────── */
+  .score-row {
+    display:grid; grid-template-columns:1fr auto 1fr;
+    align-items:center; gap:12px; margin-bottom:20px;
+  }
+  .team { display:flex; flex-direction:column; gap:4px; }
+  .team.home { align-items:flex-start; }
+  .team.away { align-items:flex-end; }
+  .team-logo-name { display:flex; align-items:center; gap:7px; }
+  .team.away .team-logo-name { flex-direction:row-reverse; }
+  .team-logo { width:24px; height:24px; object-fit:contain; }
+  .team-name {
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800; font-size:22px; letter-spacing:0.5px; line-height:1;
+    color: var(--text);
+  }
+
+  .score-box { display:flex; align-items:center; gap:8px; }
+  .score-num {
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:900; font-size:56px; line-height:1;
+    color: var(--text);
+    transition: transform 0.3s, color 0.4s;
+  }
+  .score-sep {
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:300; font-size:40px; color:var(--muted);
+  }
+
+  /* ── BASKÜ BARI ─────────────────────────── */
+  .goal-prob-section { margin-bottom:14px; }
+  .goal-prob-label {
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:6px; font-size:11px; color:var(--muted); letter-spacing:0.3px;
+  }
+  .goal-prob-label .highlight {
+    color:var(--gold); font-weight:700; font-size:12px;
+    font-family:'Barlow Condensed',sans-serif; letter-spacing:1px;
+  }
+  .prob-track {
+    height:6px; background:rgba(255,255,255,0.04);
+    border-radius:3px; overflow:hidden; position:relative;
+  }
+  .prob-fill-home {
+    position:absolute; left:0; top:0; bottom:0; border-radius:3px;
+    background: linear-gradient(90deg, rgba(0,240,160,0.7), rgba(0,240,160,0.2));
+    transition:width 1.2s cubic-bezier(0.4,0,0.2,1);
+  }
+  .prob-fill-away {
+    position:absolute; right:0; top:0; bottom:0; border-radius:3px;
+    background: linear-gradient(270deg, rgba(255,61,90,0.7), rgba(255,61,90,0.2));
+    transition:width 1.2s cubic-bezier(0.4,0,0.2,1);
+  }
+
+  /* ── İSTATİSTİK GRID ────────────────────── */
+  .stats-row {
+    display:grid; grid-template-columns:repeat(6,1fr);
+    gap:1px; margin-top:14px;
+    background: var(--border);
+    border-radius:6px; overflow:hidden;
+  }
+  .stat-item {
+    background: var(--s2);
+    padding: 10px 6px; text-align:center;
+  }
+  .stat-item:first-child { border-radius:6px 0 0 6px; }
+  .stat-item:last-child  { border-radius:0 6px 6px 0; }
+
+  .stat-label {
+    font-size:9px; color:var(--muted);
+    letter-spacing:0.8px; text-transform:uppercase;
+    margin-bottom:5px; font-weight:600;
+  }
+  .stat-values {
+    display:flex; align-items:center; justify-content:center;
+    gap:5px; font-family:'JetBrains Mono',monospace;
+    font-size:13px; font-weight:600;
+  }
+  .stat-home { color:var(--green); }
+  .stat-away { color:var(--red); }
+  .stat-sep  { color:var(--muted); font-size:10px; }
+
+  /* ── ROZET / TAG ────────────────────────── */
+  .hot-badge {
+    display:inline-flex; align-items:center; gap:4px;
+    background:rgba(255,200,90,0.1); border:1px solid rgba(255,200,90,0.2);
+    color:var(--gold); padding:2px 8px; border-radius:3px;
+    font-family:'Barlow Condensed',sans-serif;
+    font-size:10px; font-weight:700; letter-spacing:1px;
+    animation: glow-pulse 2s ease infinite;
+  }
+  @keyframes glow-pulse {
+    0%,100%{box-shadow:0 0 0 0 rgba(255,200,90,0)}
+    50%{box-shadow:0 0 12px 2px rgba(255,200,90,0.12)}
+  }
+  .tag { font-size:10px; padding:2px 7px; border-radius:3px; font-weight:600; letter-spacing:0.5px; }
+  .tag-high { background:var(--green-dim); color:var(--green); border:1px solid rgba(0,240,160,0.2); }
+  .tag-mid  { background:var(--gold-dim);  color:var(--gold);  border:1px solid rgba(255,200,90,0.2); }
+  .tag-low  { background:rgba(74,90,120,0.15); color:var(--muted); border:1px solid var(--border); }
+
+  /* ── ANALİZ KUTUSU ──────────────────────── */
+  .insight-wrapper { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
+
+  .match-insight {
+    border-radius:8px;
+    border:1px solid;
+    overflow:hidden;
+    animation: fade-up 0.3s ease both;
+    font-size:13px; line-height:1.55;
+  }
+  @keyframes fade-up { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+
+  /* Üst başlık şeridi */
+  .insight-header {
+    display:flex; align-items:center; gap:8px;
+    padding:7px 12px;
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:700; font-size:11px; letter-spacing:1.5px;
+    text-transform:uppercase;
+  }
+  .insight-header-icon { font-size:14px; }
+
+  /* İçerik alanı */
+  .insight-content { padding:10px 14px 12px; }
+
+  /* Büyük bahis önerisi satırı */
+  .bet-call {
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800; font-size:18px; letter-spacing:0.5px;
+    margin-bottom:5px; line-height:1.2;
+  }
+  /* Açıklama metni */
+  .bet-reason {
+    font-size:12px; line-height:1.6; opacity:0.85;
+    margin-bottom:8px;
+  }
+  .bet-reason strong { font-weight:700; filter:brightness(1.15); }
+
+  .insight-tags { display:flex; flex-wrap:wrap; gap:4px; }
+  .insight-tag {
+    font-size:10px; padding:3px 8px; border-radius:3px;
+    background:rgba(255,255,255,0.07);
+    border:1px solid rgba(255,255,255,0.1);
+    color:inherit; font-weight:700; letter-spacing:0.4px;
+    font-family:'Barlow Condensed',sans-serif;
+  }
+
+  /* Renk temaları */
+  .match-insight.level-hot {
+    background:rgba(255,61,90,0.04); border-color:rgba(255,61,90,0.3);
+  }
+  .match-insight.level-hot .insight-header {
+    background:rgba(255,61,90,0.12); color:#ff8fa0;
+  }
+  .match-insight.level-hot .insight-content { color:#ffccd5; }
+
+  .match-insight.level-warm {
+    background:rgba(255,200,90,0.04); border-color:rgba(255,200,90,0.25);
+  }
+  .match-insight.level-warm .insight-header {
+    background:rgba(255,200,90,0.1); color:#ffc85a;
+  }
+  .match-insight.level-warm .insight-content { color:#ffe8a8; }
+
+  .match-insight.level-calm {
+    background:rgba(0,240,160,0.03); border-color:rgba(0,240,160,0.2);
+  }
+  .match-insight.level-calm .insight-header {
+    background:rgba(0,240,160,0.08); color:#00f0a0;
+  }
+  .match-insight.level-calm .insight-content { color:#b0f5e0; }
+
+  .match-insight.level-low {
+    background:rgba(74,90,120,0.06); border-color:rgba(74,90,120,0.2);
+  }
+  .match-insight.level-low .insight-header {
+    background:rgba(74,90,120,0.1); color:#4a5a78;
+  }
+  .match-insight.level-low .insight-content { color:#4a5a78; }
+
+  /* ── CANLI BİLDİRİM BANNER ──────────────── */
+  #alertBanner {
+    position:fixed; bottom:24px; right:24px; z-index:500;
+    max-width:360px; width:calc(100% - 48px);
+    background:var(--s2);
+    border:1px solid rgba(255,200,90,0.4);
+    border-radius:10px; overflow:hidden;
+    box-shadow:0 16px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,200,90,0.1);
+    transform:translateY(120%); opacity:0;
+    transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s ease;
+  }
+  #alertBanner.show { transform:translateY(0); opacity:1; }
+  .alert-stripe {
+    height:3px;
+    background:linear-gradient(90deg, var(--gold), var(--red));
+  }
+  .alert-body { padding:14px 16px 14px; }
+  .alert-top {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:8px;
+  }
+  .alert-label {
+    display:flex; align-items:center; gap:6px;
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:700; font-size:10px; letter-spacing:2px;
+    color:var(--gold); text-transform:uppercase;
+  }
+  .alert-close {
+    background:none; border:none; color:var(--muted);
+    font-size:16px; cursor:pointer; line-height:1;
+    transition:color 0.15s; padding:0;
+  }
+  .alert-close:hover { color:var(--text); }
+  .alert-match {
+    font-size:11px; color:var(--muted); margin-bottom:5px;
+    font-family:'Barlow Condensed',sans-serif; letter-spacing:0.5px;
+  }
+  .alert-call {
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:900; font-size:22px; letter-spacing:0.5px;
+    color:var(--text); line-height:1.1; margin-bottom:5px;
+  }
+  .alert-call span { color:var(--gold); }
+  .alert-why {
+    font-size:12px; color:var(--muted); line-height:1.5;
+  }
+  .alert-dot { width:6px; height:6px; background:var(--gold); border-radius:50%; animation:blink 1s step-end infinite; }
+
+  /* ── ÖZET KARTLAR ───────────────────────── */
+  .summary-grid {
+    display:grid; grid-template-columns:repeat(3,1fr);
+    gap:10px; margin-top:28px;
+  }
+  .summary-card {
+    background:var(--s1); border:1px solid var(--border);
+    border-radius:8px; padding:20px 16px; text-align:center;
+    position:relative; overflow:hidden;
+  }
+  .summary-card::after {
+    content:''; position:absolute;
+    bottom:0; left:0; right:0; height:2px;
+  }
+  .summary-card:nth-child(1)::after { background:var(--green); }
+  .summary-card:nth-child(2)::after { background:var(--gold); }
+  .summary-card:nth-child(3)::after { background:var(--red); }
+  .summary-card .big-num {
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:900; font-size:52px; line-height:1; margin-bottom:4px;
+  }
+  .summary-card .label {
+    font-size:10px; color:var(--muted);
+    letter-spacing:1.5px; text-transform:uppercase; font-weight:600;
+  }
+
+  /* ── TOOLTIP ────────────────────────────── */
+  .tip-wrap {
+    position:relative; display:inline-flex;
+    align-items:center; gap:3px; cursor:help;
+  }
+  .tip-icon {
+    width:13px; height:13px; background:rgba(74,90,120,0.3);
+    border-radius:50%; font-size:8px; font-weight:700; color:var(--muted);
+    display:inline-flex; align-items:center; justify-content:center;
+    flex-shrink:0; transition:background 0.15s;
+  }
+  .tip-wrap:hover .tip-icon { background:rgba(0,240,160,0.2); color:var(--green); }
+  .tip-box {
+    position:absolute; bottom:calc(100% + 7px); left:50%; transform:translateX(-50%);
+    background:#121926; border:1px solid var(--border2);
+    border-radius:6px; padding:9px 11px; width:190px;
+    font-size:11px; line-height:1.55; color:var(--text);
+    font-family:'Barlow',sans-serif; font-weight:400;
+    pointer-events:none; opacity:0; transition:opacity 0.15s; z-index:999;
+    box-shadow:0 12px 32px rgba(0,0,0,0.6);
+  }
+  .tip-box::after {
+    content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%);
+    border:5px solid transparent; border-top-color:#121926;
+  }
+  .tip-wrap:hover .tip-box { opacity:1; }
+
+  /* ── BİLGİ PANELİ ───────────────────────── */
+  .info-panel {
+    margin-top:36px; background:var(--s1);
+    border:1px solid var(--border); border-radius:8px;
+  }
+  .info-panel summary {
+    padding:14px 20px; cursor:pointer;
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:700; font-size:13px; letter-spacing:1.5px;
+    color:var(--muted); text-transform:uppercase; list-style:none;
+    transition:color 0.15s;
+  }
+  .info-panel summary:hover { color:var(--text); }
+  .info-grid {
+    display:grid; grid-template-columns:repeat(2,1fr);
+    gap:1px; background:var(--border);
+    border-top:1px solid var(--border);
+  }
+  .info-item {
+    background:var(--s1); padding:16px 20px;
+  }
+  .info-item-header {
+    display:flex; align-items:center; gap:8px; margin-bottom:6px;
+  }
+  .info-emoji { font-size:14px; }
+  .info-item-title {
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:700; font-size:13px; letter-spacing:0.5px; color:var(--text);
+  }
+  .info-item-desc {
+    font-size:12px; color:var(--muted); line-height:1.65;
+  }
+  .info-item-desc strong { color:var(--text); }
+
+  /* ── TELEGRAM POPUP ─────────────────────── */
+  .tg-popup-overlay {
+    position:fixed; inset:0; z-index:999;
+    background:rgba(0,0,0,0.7);
+    backdrop-filter:blur(8px);
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; pointer-events:none;
+    transition:opacity 0.25s ease;
+  }
+  .tg-popup-overlay.show { opacity:1; pointer-events:all; }
+  .tg-popup {
+    background:var(--s2);
+    border:1px solid var(--border2);
+    border-radius:12px; padding:32px 28px;
+    max-width:360px; width:90%;
+    text-align:center; position:relative;
+    transform:translateY(16px) scale(0.97);
+    transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    box-shadow:0 32px 80px rgba(0,0,0,0.7);
+  }
+  .tg-popup-overlay.show .tg-popup { transform:translateY(0) scale(1); }
+  .tg-popup-close {
+    position:absolute; top:14px; right:16px;
+    background:none; border:none; color:var(--muted);
+    font-size:18px; cursor:pointer; transition:color 0.15s;
+  }
+  .tg-popup-close:hover { color:var(--text); }
+  .tg-icon {
+    width:56px; height:56px;
+    background:linear-gradient(135deg,#2AABEE,#229ED9);
+    border-radius:50%; display:flex; align-items:center; justify-content:center;
+    margin:0 auto 14px; font-size:28px;
+    box-shadow:0 8px 24px rgba(42,171,238,0.3);
+  }
+  .tg-popup h2 {
+    font-family:'Barlow Condensed',sans-serif;
+    font-weight:800; font-size:22px; letter-spacing:1px;
+    color:var(--text); margin-bottom:8px;
+  }
+  .tg-popup p { font-size:13px; color:var(--muted); line-height:1.65; margin-bottom:20px; }
+  .tg-popup p strong { color:var(--text); }
+  .tg-join-btn {
+    display:inline-flex; align-items:center; gap:8px;
+    background:linear-gradient(135deg,#2AABEE,#229ED9);
+    color:#fff; border:none; border-radius:6px;
+    padding:12px 24px; font-size:14px; font-weight:700;
+    cursor:pointer; font-family:'Barlow',sans-serif;
+    text-decoration:none; transition:all 0.2s; width:100%;
+    justify-content:center;
+    box-shadow:0 6px 20px rgba(42,171,238,0.25);
+  }
+  .tg-join-btn:hover { transform:translateY(-2px); box-shadow:0 10px 28px rgba(42,171,238,0.4); }
+  .tg-members {
+    display:flex; align-items:center; justify-content:center;
+    gap:5px; margin-top:12px; font-size:11px; color:var(--muted);
+  }
+  .tg-members-dot {
+    width:6px; height:6px;
+    background:var(--green); border-radius:50%;
+    animation:blink 1s step-end infinite;
+  }
+
+  /* ── API BİLGİ NOTU ─────────────────────── */
+  .api-note {
+    margin-top:20px; padding:10px 14px;
+    background:var(--green-dim); border:1px solid rgba(0,240,160,0.1);
+    border-radius:6px; font-size:11px; color:var(--muted); text-align:center;
+  }
+
+  /* ── MOBILE ─────────────────────────────── */
+  @media (max-width: 700px) {
+    header { padding: 0 16px; }
+    main   { padding: 16px 12px; }
+    .stats-row { grid-template-columns: repeat(3,1fr); }
+    .score-num { font-size:42px; }
+    .team-name { font-size:16px; }
+    .info-grid { grid-template-columns:1fr; }
+    .summary-grid { grid-template-columns:repeat(3,1fr); gap:6px; }
+    .card-inner { padding:14px 16px 16px; }
+  }
+
+  /* ── FIRSAT BANNER ──────────────────────── */
+  #opportunity-banner {
+    display: none;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, rgba(255,200,90,0.12), rgba(255,61,90,0.08));
+    border: 1px solid rgba(255,200,90,0.3);
+    border-radius: 8px;
+    padding: 0;
+    overflow: hidden;
+    animation: fade-up 0.4s ease both;
+    cursor: pointer;
+  }
+  #opportunity-banner.show { display:block; }
+  .banner-inner {
+    display: flex; align-items: center; gap: 0;
+  }
+  .banner-left {
+    background: var(--gold);
+    color: #000;
+    padding: 16px 18px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 2px; min-width: 80px; text-align: center;
+    flex-shrink: 0;
+  }
+  .banner-left .banner-icon { font-size: 22px; line-height:1; }
+  .banner-left .banner-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900; font-size: 9px; letter-spacing: 1.5px;
+    text-transform: uppercase; color: rgba(0,0,0,0.6);
+  }
+  .banner-body {
+    padding: 14px 18px; flex: 1;
+  }
+  .banner-match {
+    font-size: 11px; color: var(--muted); margin-bottom: 4px;
+    font-family: 'Barlow Condensed', sans-serif; letter-spacing: 0.5px;
+  }
+  .banner-action {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 800; font-size: 20px; letter-spacing: 0.5px;
+    color: var(--gold); line-height: 1.2;
+  }
+  .banner-reason {
+    font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.4;
+  }
+  .banner-close {
+    padding: 14px 16px; background: none; border: none;
+    color: var(--muted); font-size: 16px; cursor: pointer;
+    flex-shrink: 0; transition: color 0.15s; align-self: stretch;
+    display: flex; align-items: center;
+  }
+  .banner-close:hover { color: var(--text); }
+  .banner-minute {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; color: var(--red);
+    background: rgba(255,61,90,0.1); border: 1px solid rgba(255,61,90,0.2);
+    padding: 2px 6px; border-radius: 3px; margin-left: 6px;
+  }
+
+  /* ── HEMEN OYNA BUTONU ──────────────────── */
+  .banner-cta-wrap {
+    border-top: 1px solid rgba(255,200,90,0.15);
+    padding: 12px 18px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; background: rgba(0,0,0,0.15);
+  }
+  .banner-cta-hint {
+    font-size: 11px; color: var(--muted); line-height: 1.4; flex: 1;
+    font-family: 'Barlow', sans-serif;
+  }
+  .banner-cta-hint strong { color: var(--gold); }
+  .banner-play-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, #ffc85a, #ff9a00);
+    color: #000; border: none; border-radius: 6px;
+    padding: 11px 22px; cursor: pointer; flex-shrink: 0;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900; font-size: 16px; letter-spacing: 1px;
+    text-transform: uppercase;
+    box-shadow: 0 4px 20px rgba(255,180,0,0.35);
+    transition: all 0.15s ease;
+    position: relative; overflow: hidden;
+    text-decoration: none;
+  }
+  .banner-play-btn::before {
+    content: '';
+    position: absolute; top: 0; left: -100%;
+    width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: btn-shine 2.2s ease infinite;
+  }
+  @keyframes btn-shine {
+    0%   { left: -100%; }
+    50%  { left: 160%; }
+    100% { left: 160%; }
+  }
+  .banner-play-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(255,180,0,0.5);
+  }
+  .banner-play-btn:active { transform: translateY(0); }
+  .btn-arrow { font-size: 18px; }
+  .banner-disclaimer {
+    font-size: 9px; color: var(--muted); text-align: center;
+    padding: 6px 18px 8px;
+    opacity: 0.5; font-family: 'Barlow', sans-serif;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── AI ANALİZ PANELI ───────────────────── */
+  #ai-panel {
+    display: none;
+    margin-bottom: 16px;
+    border: 1px solid rgba(77,166,255,0.25);
+    border-radius: 8px;
+    overflow: hidden;
+    animation: fade-up 0.35s ease both;
+  }
+  #ai-panel.show { display: block; }
+
+  .ai-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(77,166,255,0.08);
+    border-bottom: 1px solid rgba(77,166,255,0.12);
+  }
+  .ai-panel-title {
+    display: flex; align-items: center; gap: 8px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 800; font-size: 13px; letter-spacing: 1px;
+    color: var(--blue);
+  }
+  .ai-panel-title .ai-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--blue);
+    animation: blink 1.2s ease infinite;
+  }
+  .ai-panel-close {
+    background: none; border: none; color: var(--muted);
+    font-size: 14px; cursor: pointer; transition: color 0.15s;
+  }
+  .ai-panel-close:hover { color: var(--text); }
+
+  .ai-panel-body {
+    padding: 14px 18px;
+    background: rgba(10,14,26,0.6);
+  }
+  .ai-panel-context {
+    font-size: 10px; color: var(--muted); margin-bottom: 8px;
+    font-family: 'Barlow Condensed', sans-serif; letter-spacing: 0.5px;
+  }
+  .ai-panel-text {
+    font-size: 13px; line-height: 1.7; color: var(--text);
+    min-height: 40px;
+  }
+  .ai-panel-text.loading {
+    display: flex; align-items: center; gap: 10px; color: var(--muted);
+  }
+  .ai-spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(77,166,255,0.2);
+    border-top-color: var(--blue);
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  .ai-panel-text strong { color: var(--gold); }
+  .ai-panel-text em     { color: var(--green); font-style: normal; }
+
+  .ai-panel-footer {
+    padding: 8px 18px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-top: 1px solid rgba(77,166,255,0.08);
+  }
+  .ai-model-tag {
+    font-size: 9px; color: var(--muted); letter-spacing: 0.5px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .ai-refresh-btn {
+    background: none; border: 1px solid rgba(77,166,255,0.2);
+    color: var(--blue); padding: 3px 10px; border-radius: 3px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700; font-size: 10px; letter-spacing: 0.5px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .ai-refresh-btn:hover { background: rgba(77,166,255,0.1); }
+  .ai-refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* AI butonu banner içinde */
+  .banner-ai-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(77,166,255,0.1);
+    border: 1px solid rgba(77,166,255,0.25);
+    color: var(--blue); padding: 6px 14px; border-radius: 4px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700; font-size: 12px; letter-spacing: 0.5px;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .banner-ai-btn:hover { background: rgba(77,166,255,0.18); }
+  .banner-ai-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+</style>
+</head>
+<body>
+
+
+<!-- Canlı Bildirim Banner -->
+<div id="alertBanner">
+  <div class="alert-stripe"></div>
+  <div class="alert-body">
+    <div class="alert-top">
+      <div class="alert-label"><div class="alert-dot"></div> EN İYİ FIRSAT</div>
+      <button class="alert-close" onclick="document.getElementById('alertBanner').classList.remove('show')">✕</button>
+    </div>
+    <div class="alert-match" id="alertMatch">—</div>
+    <div class="alert-call" id="alertCall">—</div>
+    <div class="alert-why" id="alertWhy">—</div>
+  </div>
+</div>
+
+<!-- Telegram Popup -->
+<div class="tg-popup-overlay" id="tgPopup" onclick="if(event.target===this)this.classList.remove('show')">
+  <div class="tg-popup">
+    <button class="tg-popup-close" onclick="document.getElementById('tgPopup').classList.remove('show')">✕</button>
+    <div class="tg-icon">✈️</div>
+    <h2>Canlı Tahminci</h2>
+    <p>
+      <strong>Günlük ücretsiz tahminler, canlı maç analizleri</strong> ve toplulukla birlikte maç keyfi için Telegram kanalımıza katıl!
+    </p>
+    <a class="tg-join-btn" href="https://t.me/canlitahminci" target="_blank" rel="noopener">
+      ✈️ &nbsp; Kanala Katıl
+    </a>
+    <div class="tg-members">
+      <div class="tg-members-dot"></div>
+      @canlitahminci
+    </div>
+  </div>
+</div>
+
+<header>
+  <div class="logo" style="cursor:pointer" onclick="document.getElementById('tgPopup').classList.add('show')">Canlı<span>Tahminci</span></div>
+  <div class="header-right">
+    <button class="refresh-btn" onclick="loadMatches()" id="refreshBtn">⟳ Yenile</button>
+    <div class="live-badge"><div class="live-dot"></div>CANLI</div>
+    <div class="last-update" id="clock">— : —</div>
+  </div>
+</header>
+
+<main>
+  <div class="section-title">CANLI MAÇLAR — GOL İHTİMALİ ANALİZİ</div>
+
+  <div class="controls-bar">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Ev Sahibi</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent2)"></div>Deplasman</div>
+    </div>
+    <div class="filter-right">
+      <select id="leagueFilter" onchange="applyFilters()">
+        <option value="all">🌍 Tüm Ligler</option>
+      </select>
+      <select id="sortFilter" onchange="applyFilters()">
+        <option value="prob">🎯 Gol İhtimaline Göre</option>
+        <option value="minute">⏱️ Dakikaya Göre</option>
+        <option value="league">🏆 Lige Göre</option>
+      </select>
+      <div class="match-count" id="matchCount">— maç</div>
+    </div>
+  </div>
+
+  <div id="opportunity-banner">
+    <div class="banner-inner">
+      <div class="banner-left">
+        <div class="banner-icon">🔥</div>
+        <div class="banner-label">En İyi Fırsat</div>
+      </div>
+      <div class="banner-body">
+        <div class="banner-match" id="banner-match">—</div>
+        <div class="banner-action" id="banner-action">—</div>
+        <div class="banner-reason" id="banner-reason">—</div>
+      </div>
+      <button class="banner-close" onclick="document.getElementById('opportunity-banner').classList.remove('show')">✕</button>
+    </div>
+    <div class="banner-cta-wrap">
+      <div class="banner-cta-hint">
+        Bu fırsat istatistiklere göre seçildi — <strong>en yüksek beklenti bu maçta.</strong>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button class="banner-ai-btn" id="banner-ai-btn" onclick="runAIAnalysis()">
+          🤖 AI Analizi
+        </button>
+        <a class="banner-play-btn" id="banner-play-btn" href="https://gir.gg/cevdet" target="_blank" rel="noopener">
+          <span class="btn-arrow">▶</span> HEMEN OYNA
+        </a>
+      </div>
+    </div>
+    <div class="banner-disclaimer">Sorumlu oynayın. 18+ | Canlı Tahminci tavsiye verir, bahis kararı size aittir.</div>
+  </div>
+
+  <!-- AI Analiz Paneli -->
+  <div id="ai-panel">
+    <div class="ai-panel-header">
+      <div class="ai-panel-title">
+        <div class="ai-dot"></div>
+        🤖 YAPAY ZEKA ANALİZİ
+      </div>
+      <button class="ai-panel-close" onclick="document.getElementById('ai-panel').classList.remove('show')">✕</button>
+    </div>
+    <div class="ai-panel-body">
+      <div class="ai-panel-context" id="ai-panel-context">—</div>
+      <div class="ai-panel-text" id="ai-panel-text">—</div>
+    </div>
+    <div class="ai-panel-footer">
+      <div class="ai-model-tag">Claude · Canlı Analiz</div>
+      <button class="ai-refresh-btn" id="ai-refresh-btn" onclick="runAIAnalysis()">↻ Yenile</button>
+    </div>
+  </div>
+
+  <div id="matchContainer">
+    <div class="loading"><div class="spinner"></div><p>Canlı maçlar yükleniyor...</p></div>
+  </div>
+
+  <div class="section-title" style="margin-top:40px">GENEL ÖZET</div>
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="big-num" style="color:var(--live)" id="totalGoals">—</div>
+      <div class="label">Toplam Gol</div>
+    </div>
+    <div class="summary-card">
+      <div class="big-num" style="color:var(--accent)" id="hotMatches">—</div>
+      <div class="label">Yüksek İhtimalli Maç</div>
+    </div>
+    <div class="summary-card">
+      <div class="big-num" style="color:var(--accent3)" id="liveCount">—</div>
+      <div class="label">Canlı Maç</div>
+    </div>
+  </div>
+
+  <div class="api-note">⚡ Veriler API-Football üzerinden çekiliyor · Otomatik yenileme: 30 saniye</div>
+
+  <div class="info-panel">
+    <div class="info-panel-title">📖 METRİKLER HAKKINDA</div>
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-item-header">
+          <span class="info-emoji">🎯</span>
+          <span class="info-item-title">Sonraki Gol İhtimali</span>
+        </div>
+        <div class="info-item-desc">
+          Maçın geri kalanında <strong>en az 1 gol atılma olasılığı</strong>. xG hızı, isabetli şut ve tehlikeli atak verileri birleştirilerek hesaplanır. Dakika ilerledikçe baskı artarsa yükselir. <strong>%65+</strong> = yüksek risk.
+        </div>
+      </div>
+      <div class="info-item">
+        <div class="info-item-header">
+          <span class="info-emoji">📊</span>
+          <span class="info-item-title">xG — Beklenen Gol</span>
+        </div>
+        <div class="info-item-desc">
+          Her şutun <strong>pozisyonuna, açısına ve mesafesine</strong> göre hesaplanan gol olasılığının toplamı. Örnek: <strong>xG 2.4</strong> olan takım o maçta istatistiksel olarak 2-3 gol atmayı hak ediyor demektir.
+        </div>
+      </div>
+      <div class="info-item">
+        <div class="info-item-header">
+          <span class="info-emoji">⚡</span>
+          <span class="info-item-title">Hücum Gücü Barı</span>
+        </div>
+        <div class="info-item-desc">
+          İki takımın <strong>toplam ofansif baskısını</strong> karşılaştırır. xG, isabetli şut, tehlikeli atak ve top kontrolü ağırlıklı hesaplanır. Barın ağır bastığı taraf <strong>gol için daha elverişli</strong> konumda.
+        </div>
+      </div>
+      <div class="info-item">
+        <div class="info-item-header">
+          <span class="info-emoji">🔥</span>
+          <span class="info-item-title">Baskı Yapan Rozeti</span>
+        </div>
+        <div class="info-item-desc">
+          Bir takımın tehlikeli atak ve isabetli şut sayısı rakibine göre <strong>belirgin şekilde yüksek</strong> olduğunda görünür. Gol gelmese bile o takımın <strong>anlık üstünlüğünü</strong> ifade eder.
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ── CACHE SUNUCUSU AYARI ─────────────────────────────────
+// Sunucunun IP veya domain'ini buraya yaz
+// Örn: 'http://123.456.78.90:3001' veya 'http://tahminci.com:3001'
+const CACHE_SERVER = window.location.origin; // Aynı sunucudan çalışıyor
+
+// Eski direkt API ayarları (artık kullanılmıyor — sadece yedek)
+const API_KEY = 'f3ccf91cf086e59284f51f352ca37f1d';
+const BASE    = 'https://v3.football.api-sports.io';
+
+// Cache sunucusundan tüm veriyi tek seferde çek
+let _cacheData = null;
+async function fetchCacheServer() {
+  try {
+    const r = await fetch(CACHE_SERVER + '/live', { cache: 'no-store' });
+    if (!r.ok) throw new Error('Cache sunucu ' + r.status);
+    _cacheData = await r.json();
+    return _cacheData;
+  } catch(e) {
+    console.warn('Cache sunucuya erişilemedi, direkt API deneniyor:', e.message);
+    return null;
+  }
+}
+
+async function fetchAPI(path) {
+  const r = await fetch(BASE + path, { headers: { 'x-apisports-key': API_KEY } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const d = await r.json();
+  if (d.errors && Object.keys(d.errors).length) throw new Error(JSON.stringify(d.errors));
+  return d;
+}
+
+// Events verisinden korner/kart çıkar
+// API-Football event format:
+//   type: "Goal" | "Card" | "subst" | "Var"
+//   detail: "Normal Goal" | "Corner" | "Yellow Card" | "Red Card" | "Second Yellow card" | ...
+//   comments: "Corner" (korner goldeki gibi bazı durumlarda)
+function extractFromEvents(eventsArr, teamId) {
+  const out = { corners:0, yellow_cards:0, red_cards:0 };
+  if (!eventsArr || !eventsArr.length) return out;
+  eventsArr.forEach(ev => {
+    if (ev.team?.id !== teamId) return;
+    const type   = (ev.type   || '').toLowerCase().trim();
+    const detail = (ev.detail || '').toLowerCase().trim();
+
+    // KORNER: API-Football'da "Corner" ayrı bir event type'ı OLARAK gelmez
+    // Gerçek köşe vuruşları şu şekilde gelir:
+    //   type: "Goal", detail: "Normal Goal", comments: "Corner kick"
+    //   VEYA type: "Goal", detail: "Corner"  
+    // Not: cornerler çoğunlukla statistics endpoint'inden gelir (Corner Kicks)
+    if (type === 'goal' && (detail === 'corner' || (ev.comments || '').toLowerCase().includes('corner'))) {
+      out.corners++; // Bu kornerden gelen goldür, direct corner count değil
+    }
+
+    // KART
+    if (type === 'card') {
+      if (detail.includes('yellow') && !detail.includes('second')) out.yellow_cards++;
+      if (detail.includes('red') || detail.includes('second yellow')) out.red_cards++;
+    }
+  });
+  return out;
+}
+
+// Statistics'ten corner sayısını doğrudan çek (en güvenilir yol)
+function extractCornersFromStats(statsArr, teamId) {
+  if (!statsArr || !statsArr.length) return null;
+  const side = statsArr.find(s => s.team?.id === teamId);
+  if (!side) return null;
+  for (const st of (side.statistics || [])) {
+    const t = (st.type || '').toLowerCase();
+    if (t.includes('corner')) {
+      const v = parseInt(st.value);
+      return isNaN(v) ? null : v;
+    }
+  }
+  return null;
+}
+
+function extractStats(statsArr, teamId, fallbackGoals, minute, eventsArr) {
+  const obj = {
+    xg: null, shots_on: null, shots_total: null, dangerous_attacks: null,
+    ball_possession: null, corners: null, yellow_cards: null,
+    red_cards: null, fouls: null, offsides: null,
+    hasRealData: false
+  };
+
+  // 1. Events'ten kart verisini çek (en güvenilir kart kaynağı)
+  if (eventsArr && eventsArr.length) {
+    const evData = extractFromEvents(eventsArr, teamId);
+    obj.yellow_cards = evData.yellow_cards;
+    obj.red_cards    = evData.red_cards;
+    // Korner events'ten de geliyorsa al
+    if (evData.corners > 0) obj.corners = evData.corners;
+  }
+
+  // 2. Statistics endpoint verisini parse et
+  if (statsArr && statsArr.length) {
+    const side = statsArr.find(s => s.team?.id === teamId);
+    if (side && side.statistics?.length) {
+      side.statistics.forEach(st => {
+        const raw = st.value;
+        if (raw === null || raw === undefined || raw === '') return;
+        const v = raw;
+        const t = (st.type || '').toLowerCase();
+
+        if (t.includes('possession')) {
+          const pv = parseInt(v);
+          if (!isNaN(pv)) obj.ball_possession = pv;
+        }
+        if (t.includes('shots on goal') || t.includes('shots on target')) {
+          const sv = parseInt(v);
+          if (!isNaN(sv)) obj.shots_on = sv;
+        }
+        if (t.includes('total shots')) {
+          const sv = parseInt(v);
+          if (!isNaN(sv)) obj.shots_total = sv;
+        }
+        if (t.includes('dangerous attack')) {
+          const dv = parseInt(v);
+          if (!isNaN(dv)) obj.dangerous_attacks = dv;
+        }
+        if (t.includes('expected_goals') || t === 'expected goals' || t.includes('xg')) {
+          const xv = parseFloat(v);
+          if (!isNaN(xv)) obj.xg = xv;
+        }
+        if (t.includes('corner')) {
+          const cv = parseInt(v);
+          if (!isNaN(cv)) obj.corners = Math.max(obj.corners || 0, cv);
+        }
+        if (t.includes('yellow card')) {
+          const yv = parseInt(v);
+          if (!isNaN(yv)) obj.yellow_cards = Math.max(obj.yellow_cards || 0, yv);
+        }
+        if (t.includes('red card')) {
+          const rv = parseInt(v);
+          if (!isNaN(rv)) obj.red_cards = Math.max(obj.red_cards || 0, rv);
+        }
+        if (t.includes('fouls')) {
+          const fv = parseInt(v);
+          if (!isNaN(fv)) obj.fouls = fv;
+        }
+        if (t.includes('offside')) {
+          const ov = parseInt(v);
+          if (!isNaN(ov)) obj.offsides = ov;
+        }
+      });
+
+      // Gerçek veri var mı kontrol et
+      obj.hasRealData = (
+        obj.shots_on !== null ||
+        obj.dangerous_attacks !== null ||
+        obj.xg !== null
+      );
+    }
+  }
+
+  // 3. null değerleri 0'a çevir — ama hasRealData false ise analiz yapma
+  obj.xg               = obj.xg               ?? 0;
+  obj.shots_on         = obj.shots_on         ?? 0;
+  obj.shots_total      = obj.shots_total      ?? 0;
+  obj.dangerous_attacks= obj.dangerous_attacks?? 0;
+  obj.ball_possession  = obj.ball_possession  ?? 50;
+  obj.corners          = obj.corners          ?? 0;
+  obj.yellow_cards     = obj.yellow_cards     ?? 0;
+  obj.red_cards        = obj.red_cards        ?? 0;
+  obj.fouls            = obj.fouls            ?? 0;
+  obj.offsides         = obj.offsides         ?? 0;
+
+  return obj;
+}
+
+function calcGoalProb(h, a) {
+  if (!h.hasRealData && !a.hasRealData) return { home: 50, away: 50, noData: true };
+  const hS = h.xg*0.5 + h.shots_on*0.12 + h.dangerous_attacks*0.06 + h.ball_possession*0.004;
+  const aS = a.xg*0.5 + a.shots_on*0.12 + a.dangerous_attacks*0.06 + a.ball_possession*0.004;
+  const total = (hS + aS) || 1;
+  const hp = Math.round((hS / total) * 100);
+  return { home: hp, away: 100 - hp, noData: false };
+}
+
+function calcNextGoalProb(h, a, minute) {
+  if (!h.hasRealData && !a.hasRealData) return 0; // veri yoksa 0 döndür
+  const min = parseInt(minute) || 45;
+  const xgTotal = h.xg + a.xg;
+  const rate = xgTotal / Math.max(min, 1);
+  const factor = min > 75 ? 1.4 : min > 60 ? 1.2 : min > 45 ? 1.1 : 1.0;
+  return Math.min(95, Math.max(5, Math.round(rate * 30 * factor * 100)));
+}
+
+function generateInsight(hS, aS, homeTeam, awayTeam, minute, nextGoalProb, homeGoals, awayGoals, fixtureId) {
+  if (!hS.hasRealData && !aS.hasRealData) {
+    return `<div class="match-insight level-low">
+      <div class="insight-header"><span class="insight-header-icon">⏳</span>İSTATİSTİK BEKLENİYOR</div>
+      <div class="insight-content"><div class="bet-reason">Veriler API'den henüz gelmedi, otomatik güncelleniyor...</div></div>
+    </div>`;
+  }
+
+  const min          = parseInt(minute) || 45;
+  const hG           = homeGoals || 0;
+  const aG           = awayGoals || 0;
+  const totalGoals   = hG + aG;
+  const hXg          = +hS.xg.toFixed(2);
+  const aXg          = +aS.xg.toFixed(2);
+  const totalXg      = +(hXg + aXg).toFixed(2);
+  const totalShots   = hS.shots_on + aS.shots_on;
+  const totalAtk     = hS.dangerous_attacks + aS.dangerous_attacks;
+  const totalCorners = hS.corners + aS.corners;
+  const hCorners     = hS.corners;
+  const aCorners     = aS.corners;
+  const totalYellow  = hS.yellow_cards + aS.yellow_cards;
+  const totalRed     = hS.red_cards + aS.red_cards;
+  const totalFouls   = hS.fouls + aS.fouls;
+  const scoreDiff    = Math.abs(hG - aG);
+  const losingTeam   = hG < aG ? homeTeam : hG > aG ? awayTeam : null;
+  const leadingTeam  = hG > aG ? homeTeam : hG < aG ? awayTeam : null;
+  const losingXg     = hG < aG ? hXg : aXg;
+  const losingShots  = hG < aG ? hS.shots_on : aS.shots_on;
+  const losingAtk    = hG < aG ? hS.dangerous_attacks : aS.dangerous_attacks;
+  const remainMin    = Math.max(90 - min, 1);
+  const xgPace10     = +(totalXg / Math.max(min,1) * 10).toFixed(2);
+  const cornerPer90  = +(totalCorners / Math.max(min,1) * 90).toFixed(1);
+  const cornerLeft   = +(totalCorners / Math.max(min,1) * remainMin).toFixed(1);
+  const projCorners  = +(totalCorners + cornerLeft).toFixed(1);
+
+  const hPress = hS.dangerous_attacks*1.2 + hS.shots_on*2.5 + hXg*9;
+  const aPress = aS.dangerous_attacks*1.2 + aS.shots_on*2.5 + aXg*9;
+  const pressTeam  = hPress > aPress*1.25 ? homeTeam : aPress > hPress*1.25 ? awayTeam : null;
+  const pressXg    = pressTeam===homeTeam ? hXg : aXg;
+  const pressShots = pressTeam===homeTeam ? hS.shots_on : aS.shots_on;
+  const pressAtk   = pressTeam===homeTeam ? hS.dangerous_attacks : aS.dangerous_attacks;
+
+  // Dakika segmentleri
+  const isOver     = min > 85;   // 85+ dakika = bahis kutusu bile gösterme
+  const isCritical = min > 80;   // 80-85: sadece çok güçlü sinyal
+  const isVeryLate = min > 72;   // 72-80: eşikler yükselir
+  const isLate     = min > 60;   // 60-72: dikkatli
+
+  const minProbGoal  = isOver?999: isCritical?82: isVeryLate?76: isLate?68: 62;
+  const minXgGoal    = isOver?999: isCritical?2.2: isVeryLate?1.8: isLate?1.4: 1.0;
+  const minShotsGoal = isOver?999: isCritical?7:   isVeryLate?5:   isLate?4:   3;
+  const minRemGoal   = isOver?999: isCritical?8:   isVeryLate?12:  isLate?15:  15;
+
+  const golVar      = !isOver && nextGoalProb>=minProbGoal && totalXg>=minXgGoal && totalShots>=minShotsGoal && remainMin>=minRemGoal;
+  const golVarGuclu = !isOver && nextGoalProb>=(minProbGoal+7) && totalXg>=(minXgGoal+0.3) && totalShots>=(minShotsGoal+1) && remainMin>=minRemGoal;
+  const golYok      = !isOver && nextGoalProb<=30 && totalXg<=0.6 && totalShots<=2 && remainMin>=20;
+
+  const over05 = totalGoals>=1, over15=totalGoals>=2, over25=totalGoals>=3, over35=totalGoals>=4;
+  const minRemUst = isOver?999: isCritical?10: isVeryLate?15: 15;
+  const next15 = !over15 && xgPace10>=(isVeryLate?0.7:0.35) && remainMin>=minRemUst && nextGoalProb>=minProbGoal;
+  const next25 = !over25 && xgPace10>=(isVeryLate?0.8:0.45) && remainMin>=minRemUst && nextGoalProb>=minProbGoal;
+  const next35 = !over35 && over25 && xgPace10>=0.55 && remainMin>=(isCritical?12:15) && nextGoalProb>=65;
+
+  const minXgKg  = isCritical?1.2: isVeryLate?0.9: isLate?0.7: 0.5;
+  const minAtkKg = isCritical?16:  isVeryLate?13:  isLate?10:  6;
+  const kgGuclu  = !isOver && scoreDiff>=1 && losingXg>=minXgKg && losingAtk>=minAtkKg && losingShots>=2 && remainMin>=minRemGoal;
+  const kgOrta   = !isOver && !isCritical && scoreDiff>=1 && losingXg>=0.5 && losingAtk>=6 && remainMin>=20;
+
+  const cornerLines = [8.5,9.5,10.5,11.5,12.5];
+  const bestCornerLine    = remainMin>=8 ? (cornerLines.slice().reverse().find(l=>projCorners>l+0.8)||null) : null;
+  const cornerAlreadyOver = cornerLines.slice().reverse().find(l=>totalCorners>l) || null;
+  const cornerDomTeam     = hCorners>=aCorners+3?homeTeam: aCorners>=hCorners+3?awayTeam: null;
+
+  const cardLines    = [3.5, 4.5, 5.5, 6.5, 7.5];  // Daha geniş eşik aralığı
+  const currentCards = totalYellow + totalRed * 2;   // Kırmızı 2 kart sayılır
+  // DÜZELTME: >= kullan (6 kart 5.5 eşiğini geçmeli)
+  const bestCardLine = cardLines.slice().reverse().find(l => currentCards >= l + 0.5) || null;
+  const cardProjLine = (() => {
+    if (min < 10 || remainMin < 10) return null;
+    const proj = +(currentCards / Math.max(min, 1) * 90).toFixed(1);
+    return cardLines.slice().reverse().find(l => proj >= l + 0.5) || null;
+  })();
+  const sertMac = totalFouls >= 14 || totalYellow >= 3 || totalRed >= 1;
+  const aggressiveTeam = hS.fouls > aS.fouls + 3 ? homeTeam : aS.fouls > hS.fouls + 3 ? awayTeam : null;
+
+  // ── KUTU ÜRETİCİ ─────────────────────────────────────────
+  function box(level, headerIcon, headerLabel, betCall, reason, tags) {
+    return `
+    <div class="match-insight level-${level}">
+      <div class="insight-header">
+        <span class="insight-header-icon">${headerIcon}</span>
+        ${headerLabel}
+      </div>
+      <div class="insight-content">
+        <div class="bet-call">${betCall}</div>
+        <div class="bet-reason">${reason}</div>
+        <div class="insight-tags">${tags.filter(Boolean).map(t=>`<span class="insight-tag">${t}</span>`).join('')}</div>
+      </div>
+    </div>`;
+  }
+
+  let boxes = '';
+  // Sinyal skoru — en iyi sinyali bulmak için
+  let bestScore = 0, bestSignal = null;
+
+  function trySignal(score, label, match, why, type, fid) {
+    // ── Dakika filtresi: bitime yakın maçlara sinyal verme ──
+    const minRemainRequired = {
+      gol:    20,   // Gol bahsi: en az 20dk kalmış olmalı
+      kg:     15,   // KG Var: en az 15dk
+      korner: 12,   // Korner: en az 12dk (projeksiyon anlamlı)
+      kart:    8,   // Kart: en az 8dk (kırmızı kart ani etki)
+    }[type || 'gol'] || 20;
+
+    if (remainMin < minRemainRequired) return; // Süre yetersiz — sinyal verme
+    if (min > 85) return;                       // 85+ dakika — kesinlikle verme
+
+    if (score > bestScore) {
+      bestScore  = score;
+      bestSignal = { label, match, why, type: type||'gol', minute: min, fixtureId: fid||null };
+    }
+  }
+
+  // ── MAÇ BİTİYOR ──
+  if (isOver) {
+    return box('low','🏁','MAÇ BİTİYOR',
+      'Bahis penceresi kapandı',
+      `${min}. dakika geçildi. Kalan ${remainMin} dakikada yeni bahis açmak mantıklı değil.`,
+      [`${min}. Dakika`,`${remainMin}dk Kaldı`]);
+  }
+
+  // ── 1. GOL BAHSİ ─────────────────────────────────────────
+  if (golVarGuclu && next25) {
+    const call = `2.5 Üst — Oynayın`;
+    const why = `${totalGoals} gol oldu, tempo düşmüyor. xG ${totalXg}, ${totalShots} kaleye şut, ${totalAtk} tehlikeli atak. ${pressTeam?pressTeam+' baskıda.':''} Üçüncü gol çok yakın.`;
+    boxes += box('hot','⚽','GOL BAHSİ', call, why, ['✅ 2.5 ÜST',`xG ${totalXg}`,`${totalShots} Şut`,`${remainMin}dk`]);
+    trySignal(95, `2.5 Üst Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+
+  } else if (golVarGuclu && next15) {
+    const call = `1.5 Üst — Oynayın`;
+    const why = `Maç çok açık oynanıyor. xG ${totalXg}, ${totalShots} kaleye şut. ${pressTeam?pressTeam+' kaleyi zorluyor.':''} Bir gol daha kesinlikle bekliyorum.`;
+    boxes += box('hot','⚽','GOL BAHSİ', call, why, ['✅ 1.5 ÜST',`xG ${totalXg}`,`${totalShots} Şut`,`${remainMin}dk`]);
+    trySignal(90, `1.5 Üst Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+
+  } else if (golVarGuclu) {
+    const call = `Bir Gol Daha Gelir — Gol Var`;
+    const why = pressTeam
+      ? `${pressTeam} tam baskıda: xG ${pressXg}, ${pressShots} isabetli şut, ${pressAtk} tehlikeli atak. Gol an meselesi.`
+      : `xG ${totalXg} ve ${totalShots} kaleye şut çok yüksek. Her iki taraf da gol pozisyonuna giriyor.`;
+    boxes += box('hot','⚽','GOL BAHSİ', call, why, ['✅ GOL VAR',`xG ${totalXg}`,`${totalShots} Şut`,`${remainMin}dk`]);
+    trySignal(85, `Gol Var Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+
+  } else if (golVar && next25) {
+    const call = `2.5 Üst — Oynayın`;
+    const why = `${totalGoals} gol var, xG hızı ${xgPace10}/10dk. Tempo gol için uygun, bir gol daha bekliyorum.`;
+    boxes += box('warm','⚽','GOL BAHSİ', call, why, ['⚡ 2.5 ÜST',`xG Hızı ${xgPace10}/10dk`,`${totalGoals} Gol`,`${remainMin}dk`]);
+    trySignal(75, `2.5 Üst Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+
+  } else if (golVar && next15) {
+    const call = `1.5 Üst — Oynayın`;
+    const why = `${totalGoals} gol geldi. xG ${totalXg}, ${totalShots} şut ile tempo devam ediyor. Bir gol daha normal.`;
+    boxes += box('warm','⚽','GOL BAHSİ', call, why, ['⚡ 1.5 ÜST',`xG ${totalXg}`,`${remainMin}dk`]);
+    trySignal(70, `1.5 Üst Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+
+  } else if (golVar) {
+    const call = `Gol Var — Oynayın`;
+    const why = `xG ${totalXg}, ${totalShots} kaleye şut. Sinyal yeterince güçlü, gol oynayın.`;
+    boxes += box('warm','⚽','GOL BAHSİ', call, why, ['⚡ GOL VAR',`xG ${totalXg}`,`${min}. Dk`]);
+    trySignal(60, `Gol Var Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+
+  } else if (next35 && over25) {
+    const call = `3.5 Üst — Oynayın`;
+    const why = `3 gol geldi, xG hızı ${xgPace10}/10dk ile tempo devam ediyor. Dördüncü gol için şans var.`;
+    boxes += box('hot','⚽','GOL BAHSİ', call, why, ['⚡ 3.5 ÜST',`${totalGoals} Gol`,`xG Hızı ${xgPace10}/10dk`]);
+    trySignal(80, `3.5 Üst Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+
+  } else if (over35) {
+    boxes += box('calm','✅','GOL BAHSİ',
+      `3.5 Üst Dolu — Tebrikler`,
+      `${totalGoals} gol atıldı. 1.5, 2.5 ve 3.5 Üst hepsi dolu. ${xgPace10>=0.5?`xG hızı ${xgPace10}/10dk — 4.5 Üst açıksa bakın.`:''}`,
+      ['✅ 3.5 DOLU','✅ 2.5 DOLU','✅ 1.5 DOLU',xgPace10>=0.5?'4.5 Üst?':'']);
+
+  } else if (over25) {
+    boxes += box('calm','✅','GOL BAHSİ',
+      `2.5 Üst Dolu`,
+      `${totalGoals} gol atıldı. 1.5 ve 2.5 Üst dolu. ${next35?`xG hızı ${xgPace10}/10dk ile 3.5 Üst için oynayın.`:`3.5 Üst için tempo yavaş (${xgPace10}/10dk).`}`,
+      ['✅ 2.5 DOLU','✅ 1.5 DOLU',next35?'⚡ 3.5 Üst Aç':'']);
+
+  } else if (over15) {
+    boxes += box('calm','✅','GOL BAHSİ',
+      `1.5 Üst Dolu`,
+      `${totalGoals} gol atıldı. ${next25?`xG hızı ${xgPace10}/10dk iyi, 2.5 Üst için hâlâ oynayın.`:`2.5 Üst için tempo yavaş (${xgPace10}/10dk) — bekleyin.`}`,
+      ['✅ 1.5 DOLU',next25?'⚡ 2.5 Üst Aç':'❌ 2.5 Üst Zayıf']);
+
+  } else if (golYok) {
+    const call = `Alt — Gol Yok`;
+    const why = `${min}. dakika, xG sadece ${totalXg} ve ${totalShots} kaleye şut. İki takım da pozisyon üretemiyor. Alt oynayın.`;
+    boxes += box('low','🧊','GOL BAHSİ', call, why, ['✅ ALT / GOL YOK',`xG ${totalXg}`,`${min}. Dk`]);
+    trySignal(55, `Alt (Gol Yok) Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+
+  } else {
+    boxes += box('low','📊','GOL BAHSİ',
+      `Sinyal Yok — Bekleyin`,
+      `xG ${totalXg}, ${totalShots} şut. Şu an net bir bahis fırsatı göremiyorum. Maçı izlemeye devam edin.`,
+      ['⏸ Bekle',`xG ${totalXg}`,`${min}. Dk`]);
+  }
+
+  // ── 2. KG VAR ────────────────────────────────────────────
+  if (totalGoals>=1 && remainMin>=10) {
+    if (kgGuclu) {
+      const call = `KG Var — Oynayın`;
+      const why = `${losingTeam} geride ama maçta aktif: xG ${losingXg}, ${losingAtk} tehlikeli atak, ${losingShots} kaleye şut. Eşitleme golü için her şeyi veriyor, ${remainMin} dakika var.`;
+      boxes += box(remainMin<=20?'hot':'warm','🔵','KG VAR / BİR GOL DAHA', call, why,
+        ['✅ KG VAR',`${losingTeam} xG ${losingXg}`,`${losingAtk} Teh.Atak`,`${remainMin}dk`]);
+      trySignal(remainMin<=20?88:72, `KG Var Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'kg', fixtureId);
+
+    } else if (kgOrta) {
+      const call = `KG Var — Oynayın`;
+      const why = `${losingTeam} geride ve pozisyon üretiyor (xG ${losingXg}). ${remainMin} dakika var, eşitleme mümkün.`;
+      boxes += box('warm','🔵','KG VAR', call, why,
+        ['⚡ KG VAR',`${losingTeam} xG ${losingXg}`,`${remainMin}dk`]);
+      trySignal(62, `KG Var Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+
+    } else if (scoreDiff>=2 && min>=70) {
+      boxes += box('low','🔵','KG VAR',
+        `KG Var Oynamayın`,
+        `${leadingTeam} ${scoreDiff} golle önde, ${remainMin} dakika kaldı. Geride kalan takımın xG ve baskısı geri dönüşe yetmez.`,
+        ['❌ KG VAR ZOR',`${scoreDiff} Gol Fark`,`${remainMin}dk`]);
+
+    } else if (scoreDiff===0 && totalGoals>=1) {
+      boxes += box('calm','🔵','KG VAR / SKOR',
+        `Sonraki Gol Belirleyici`,
+        `Berabere, KG Var zaten aktif. ${pressTeam?pressTeam+' şu an daha baskılı — bir sonraki gol ondan gelebilir.':'Sonraki golü kimin atacağı belirsiz.'} Maçı izleyin.`,
+        ['🤝 Berabere',pressTeam||'Dengeli',`${remainMin}dk`]);
+    }
+  }
+
+  // ── 3. KORNER ────────────────────────────────────────────
+  if (totalCorners>=3 || cornerAlreadyOver || bestCornerLine) {
+    if (cornerAlreadyOver) {
+      const nextLine = cornerLines.find(l=>l>cornerAlreadyOver);
+      const nextOpen = nextLine && projCorners>nextLine+0.5 && remainMin>=8;
+      if (nextOpen) {
+        const call = `${nextLine} Üst Korner — Oynayın`;
+        const why = `Şu an ${totalCorners} korner var, ${cornerAlreadyOver} Üst dolu. Kalan süreyle projeksiyon ${projCorners} — bir sonraki eşiği de geçer.${cornerDomTeam?` ${cornerDomTeam} ${Math.max(hCorners,aCorners)}-${Math.min(hCorners,aCorners)} önde.`:''}`;
+        boxes += box('hot','🚩','KORNER BAHSİ', call, why,
+          [`✅ ${cornerAlreadyOver} Üst Dolu`,`⚡ ${nextLine} Üst Aç`,`Proj: ${projCorners}`,`${remainMin}dk`]);
+        trySignal(82, `${nextLine} Üst Korner Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+      } else {
+        const nextLineLabel = nextLine ? ` ${nextLine} Üst için projeksiyon yetmez (${projCorners}).` : '';
+        boxes += box('calm','🚩','KORNER BAHSİ',
+          `${cornerAlreadyOver} Üst Dolu`,
+          `${totalCorners} korner kullanıldı.${nextLineLabel}${cornerDomTeam?` ${cornerDomTeam} ${Math.max(hCorners,aCorners)}-${Math.min(hCorners,aCorners)} önde.`:''}`,
+          [`✅ ${cornerAlreadyOver} Üst Dolu`,nextLine?`❌ ${nextLine} Zayıf`:'',`${totalCorners} Korner`]);
+      }
+    } else if (bestCornerLine && remainMin>=12) {
+      const call = `${bestCornerLine} Üst Korner — Oynayın`;
+      const why = `Şu an ${totalCorners} korner kullanıldı. Kalan ${remainMin} dakikayla birlikte projeksiyon ${projCorners} — ${bestCornerLine} eşiğini rahatça geçer.${cornerDomTeam?` ${cornerDomTeam} ${Math.max(hCorners,aCorners)}-${Math.min(hCorners,aCorners)} önde.`:''}`;
+      boxes += box('warm','🚩','KORNER BAHSİ', call, why,
+        [`⚡ ${bestCornerLine} Üst`,`Proj: ${projCorners}`,`${totalCorners} Korner`,`${remainMin}dk`]);
+      trySignal(68, `${bestCornerLine} Üst Korner Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+    } else if (cornerDomTeam && totalCorners>=3) {
+      const call = `${cornerDomTeam} Korner Handikapı — Oynayın`;
+      const why = `${cornerDomTeam} ${Math.max(hCorners,aCorners)}-${Math.min(hCorners,aCorners)} kornerde büyük önde. Bu üstünlük maç boyunca devam ederse handikap değerli.`;
+      boxes += box('calm','🚩','KORNER BAHSİ', call, why,
+        ['⚡ Korner Handikap',cornerDomTeam,`${Math.max(hCorners,aCorners)}-${Math.min(hCorners,aCorners)}`]);
+      trySignal(55, `${cornerDomTeam} Korner Handikapı`, `${homeTeam} - ${awayTeam}`, why, 'gol', fixtureId);
+    }
+  }
+
+  // ── 4. KART ──────────────────────────────────────────────
+  if (sertMac || bestCardLine || cardProjLine) {
+    if (totalRed>=1) {
+      const redTeam = hS.red_cards>0?homeTeam:awayTeam;
+      const call = bestCardLine ? `${bestCardLine} Üst Kart — Oynayın` : `Kart Var — Oynayın`;
+      const nextCardLine = bestCardLine ? cardLines.find(l=>l>bestCardLine) : cardLines[0];
+      const why = `${redTeam} kırmızı kart gördü ve 10 kişi kaldı. 10 kişilik takım çaresiz faullar yapacak — ek kart kaçınılmaz. ${nextCardLine?`${nextCardLine} Üst için de bakın.`:''}`;
+      boxes += box('hot','🟥','KART BAHSİ', call, why,
+        [bestCardLine?`✅ ${bestCardLine} Üst Dolu`:'',`⚡ Ek Kart Gelir`,`${redTeam} 10 Kişi`,`${totalYellow} Sarı`]);
+      trySignal(86, call, `${homeTeam} - ${awayTeam}`, why, 'kart');
+
+    } else if (bestCardLine) {
+      const nextLine = cardLines.find(l=>l>bestCardLine);
+      const nextOpen = nextLine && cardProjLine>=nextLine;
+      const call = nextOpen ? `${nextLine} Üst Kart — Oynayın` : `${bestCardLine} Üst Dolu`;
+      const why = `${currentCards} kart görüldü, ${bestCardLine} Üst dolu.${nextOpen?` Projeksiyon ${nextLine} eşiğini geçiyor — ${nextLine} Üst oynayın.`:''}${aggressiveTeam?` ${aggressiveTeam} çok agresif oynuyor.`:''}`;
+      boxes += box(nextOpen?'hot':'calm','🟨','KART BAHSİ', call, why,
+        [`✅ ${bestCardLine} Üst Dolu`,nextOpen?`⚡ ${nextLine} Üst Aç`:'',`${totalYellow} Sarı`,totalFouls?`${totalFouls} Faul`:'']);
+      if (nextOpen) trySignal(76, `${nextLine} Üst Kart Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'kart', fixtureId);
+
+    } else if (cardProjLine) {
+      const call = `${cardProjLine} Üst Kart — Oynayın`;
+      const why = `${totalYellow} sarı kart${totalFouls?`, ${totalFouls} faul`:''} var. Bu tempo devam ederse projeksiyon ${cardProjLine} eşiğini geçiyor.${aggressiveTeam?` ${aggressiveTeam} özellikle agresif.`:''}`;
+      boxes += box('warm','🟨','KART BAHSİ', call, why,
+        [`⚡ ${cardProjLine} Üst`,`${totalYellow} Sarı`,aggressiveTeam||'',totalFouls?`${totalFouls} Faul`:'']);
+      trySignal(64, `${cardProjLine} Üst Kart Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'kart', fixtureId);
+
+    } else if (sertMac && remainMin>=20) {
+      const call = `3.5 Üst Kart — Oynayın`;
+      const why = `Sert bir maç gidiyor: ${totalYellow} sarı kart${totalFouls?`, ${totalFouls} faul`:''}.${aggressiveTeam?` ${aggressiveTeam} çok faul yapıyor.`:''} Bu tempo devam ederse daha fazla kart kaçınılmaz.`;
+      boxes += box('warm','🟨','KART BAHSİ', call, why,
+        ['⚡ 3.5 Üst Kart',`${totalYellow} Sarı`,aggressiveTeam||'Sert Tempo',`${remainMin}dk`]);
+      trySignal(58, `3.5 Üst Kart Oynayın`, `${homeTeam} - ${awayTeam}`, why, 'kart', fixtureId);
+    }
+  }
+
+  // bestSignal'i global store'a kaydet
+  if (bestSignal) {
+    window._signals = window._signals || [];
+    // minute zaten bestSignal içinde (trySignal'den geliyor)
+    window._signals.push({ score: bestScore, ...bestSignal });
+  }
+
+  return boxes || box('low','📊','ANALİZ',
+    'Bekleyin',
+    `xG ${totalXg}, ${totalShots} şut. Şu an net bir bahis sinyali yok.`,
+    ['⏸ Bekle',`xG ${totalXg}`,`${min}. Dk`]);
+}
+
+function getProbTag(p) {
+  if (p >= 65) return '<span class="tag tag-high">YÜKSEK</span>';
+  if (p >= 40) return '<span class="tag tag-mid">ORTA</span>';
+  return '<span class="tag tag-low">DÜŞÜK</span>';
+}
+
+function renderMatch(fixture, statsArr, idx, eventsArr) {
+  const { teams, goals, fixture: fx, league } = fixture;
+  const minute   = fx?.status?.elapsed || '?';
+  const statusSh = fx?.status?.short || '';
+  const isHT     = statusSh === 'HT';
+
+  const hS = extractStats(statsArr, teams.home.id, goals.home, minute, eventsArr);
+  const aS = extractStats(statsArr, teams.away.id, goals.away, minute, eventsArr);
+  const prob     = calcGoalProb(hS, aS);
+  const nextGoal = calcNextGoalProb(hS, aS, minute);
+
+  const hotHome = hS.dangerous_attacks > aS.dangerous_attacks * 1.4 && hS.shots_on > aS.shots_on;
+  const hotAway = aS.dangerous_attacks > hS.dangerous_attacks * 1.4 && aS.shots_on > hS.shots_on;
+
+  const minLabel = isHT ? 'HT' : `${minute}'`;
+  const minClass = isHT ? 'match-minute ht' : 'match-minute';
+  const fid = fx.id;
+
+  return `
+  <div class="match-card" data-fid="${fid}" style="animation-delay:${idx*0.15}s" onclick="this.classList.toggle('active')">
+  <div class="card-inner">
+    <div class="match-header">
+      <div class="league-info">
+        ${league?.logo ? `<img class="league-logo" src="${league.logo}" onerror="this.style.display='none'">` : ''}
+        ${league?.name || ''}
+        ${league?.country ? `· ${league.country}` : ''}
+      </div>
+      <div class="${minClass}">${minLabel}</div>
+    </div>
+
+    <div class="score-row">
+      <div class="team home">
+        <div class="team-logo-name">
+          ${teams.home.logo ? `<img class="team-logo" src="${teams.home.logo}" onerror="this.style.display='none'">` : ''}
+          <div class="team-name">${teams.home.name}</div>
+        </div>
+        ${hotHome ? '<div class="hot-badge">🔥 BASKI YAPAN</div>' : ''}
+      </div>
+
+      <div class="score-box">
+        <div class="score-num">${goals.home ?? 0}</div>
+        <div class="score-sep">—</div>
+        <div class="score-num">${goals.away ?? 0}</div>
+      </div>
+
+      <div class="team away">
+        <div class="team-logo-name">
+          <div class="team-name">${teams.away.name}</div>
+          ${teams.away.logo ? `<img class="team-logo" src="${teams.away.logo}" onerror="this.style.display='none'">` : ''}
+        </div>
+        ${hotAway ? '<div class="hot-badge">🔥 BASKI YAPAN</div>' : ''}
+      </div>
+    </div>
+
+    <div class="goal-prob-section">
+      <div class="goal-prob-label">
+        <span>Hücum → <strong style="color:var(--accent)">${prob.noData ? '—' : prob.home + '%'}</strong></span>
+        <span class="tip-wrap">
+          Sonraki Gol ${nextGoal === 0 ? '<span class="tag tag-low">VERİ YOK</span>' : getProbTag(nextGoal)} <span class="highlight">${nextGoal === 0 ? '—' : nextGoal + '%'}</span>
+          <span class="tip-icon">?</span>
+          <span class="tip-box">xG hızı, isabetli şut ve tehlikeli atak verilerine göre hesaplanan tahmini gol ihtimali. Dakika ilerledikçe baskı artarsa yükselir.</span>
+        </span>
+        <span><strong style="color:var(--accent2)">${prob.away}%</strong> ← Hücum</span>
+      </div>
+      <div class="prob-track">
+        <div class="prob-fill-home" id="ph${fid}" style="width:0%;background:linear-gradient(90deg,rgba(0,229,160,0.6),rgba(0,229,160,0.2))"></div>
+        <div class="prob-fill-away" id="pa${fid}" style="width:0%;background:linear-gradient(270deg,rgba(255,77,109,0.6),rgba(255,77,109,0.2))"></div>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-item">
+        <div class="stat-label"><span class="tip-wrap">xG<span class="tip-icon">?</span><span class="tip-box">Beklenen Gol: şutun kalitesine göre gol olasılığı. 2.0 = 2 gol bekleniyordu demek.</span></span></div>
+        <div class="stat-values">
+          <span class="stat-home live-stat" data-key="xg" data-side="home">${hS.hasRealData ? hS.xg.toFixed(1) : '—'}</span>
+          <span class="stat-sep">|</span>
+          <span class="stat-away live-stat" data-key="xg" data-side="away">${aS.hasRealData ? aS.xg.toFixed(1) : '—'}</span>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label"><span class="tip-wrap">İsabetli Şut<span class="tip-icon">?</span><span class="tip-box">Kaleye yönelen şut sayısı.</span></span></div>
+        <div class="stat-values">
+          <span class="stat-home live-stat" data-key="shots_on" data-side="home">${hS.hasRealData ? hS.shots_on : '—'}</span>
+          <span class="stat-sep">|</span>
+          <span class="stat-away live-stat" data-key="shots_on" data-side="away">${aS.hasRealData ? aS.shots_on : '—'}</span>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label"><span class="tip-wrap">Top Kontrolü<span class="tip-icon">?</span><span class="tip-box">Topu elinde tutma yüzdesi.</span></span></div>
+        <div class="stat-values">
+          <span class="stat-home live-stat" data-key="possession" data-side="home">${hS.hasRealData ? hS.ball_possession + '%' : '—'}</span>
+          <span class="stat-sep">|</span>
+          <span class="stat-away live-stat" data-key="possession" data-side="away">${aS.hasRealData ? aS.ball_possession + '%' : '—'}</span>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label"><span class="tip-wrap">Teh. Atak<span class="tip-icon">?</span><span class="tip-box">Ceza sahasına yakın tehlikeli hücum hamleleri.</span></span></div>
+        <div class="stat-values">
+          <span class="stat-home live-stat" data-key="attacks" data-side="home">${hS.hasRealData ? hS.dangerous_attacks : '—'}</span>
+          <span class="stat-sep">|</span>
+          <span class="stat-away live-stat" data-key="attacks" data-side="away">${aS.hasRealData ? aS.dangerous_attacks : '—'}</span>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label"><span class="tip-wrap">Korner<span class="tip-icon">?</span><span class="tip-box">Korner sayısı. Yüksek korner = ceza sahasında yoğun baskı demek.</span></span></div>
+        <div class="stat-values">
+          <span class="stat-home live-stat" data-key="corners" data-side="home">${hS.hasRealData ? hS.corners : '—'}</span>
+          <span class="stat-sep">|</span>
+          <span class="stat-away live-stat" data-key="corners" data-side="away">${aS.hasRealData ? aS.corners : '—'}</span>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label"><span class="tip-wrap">Kart<span class="tip-icon">?</span><span class="tip-box">Sarı/kırmızı kart sayısı. Yüksek kart = maç sertleşiyor, kart bahsi değer kazanıyor.</span></span></div>
+        <div class="stat-values">
+          <span class="stat-home live-stat" data-key="cards" data-side="home">${hS.yellow_cards > 0 || hS.red_cards > 0 ? `<span style="color:#f5c542">${hS.yellow_cards}🟨</span>${hS.red_cards > 0 ? '<span style="color:#ff4d6d"> ' + hS.red_cards + '🟥</span>' : ''}` : '<span style="color:var(--muted)">—</span>'}</span>
+          <span class="stat-sep">|</span>
+          <span class="stat-away live-stat" data-key="cards" data-side="away">${aS.yellow_cards > 0 || aS.red_cards > 0 ? `<span style="color:#f5c542">${aS.yellow_cards}🟨</span>${aS.red_cards > 0 ? '<span style="color:#ff4d6d"> ' + aS.red_cards + '🟥</span>' : ''}` : '<span style="color:var(--muted)">—</span>'}</span>
+        </div>
+      </div>
+    </div>
+  <div class="insight-wrapper">${generateInsight(hS, aS, teams.home.name, teams.away.name, minute, nextGoal, goals.home, goals.away, fid)}</div>
+  </div></div>`;
+}
+
+
+// ─── FİLTRE & SIRALAMA ───
+let allFixturesData = []; // {fixture, stats, prob, nextGoal}
+
+function populateLeagueFilter(fixtures) {
+  const sel = document.getElementById('leagueFilter');
+  const leagues = [...new Map(fixtures.map(f => [f.fixture.league?.id, f.fixture.league?.name])).entries()];
+  leagues.sort((a,b) => a[1]?.localeCompare(b[1]));
+  const current = sel.value;
+  sel.innerHTML = '<option value="all">🌍 Tüm Ligler (' + fixtures.length + ')</option>';
+  leagues.forEach(([id, name]) => {
+    if (!name) return;
+    const count = fixtures.filter(f => f.fixture.league?.id === id).length;
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = name + ' (' + count + ')';
+    if (String(id) === String(current)) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function applyFilters() {
+  const leagueVal = document.getElementById('leagueFilter').value;
+  const sortVal   = document.getElementById('sortFilter').value;
+
+  let filtered = allFixturesData.slice();
+
+  if (leagueVal !== 'all') {
+    filtered = filtered.filter(d => String(d.fixture.league?.id) === String(leagueVal));
+  }
+
+  if (sortVal === 'prob') {
+    filtered.sort((a,b) => b.nextGoal - a.nextGoal);
+  } else if (sortVal === 'minute') {
+    filtered.sort((a,b) => (b.fixture.fixture?.status?.elapsed||0) - (a.fixture.fixture?.status?.elapsed||0));
+  } else if (sortVal === 'league') {
+    filtered.sort((a,b) => (a.fixture.league?.name||'').localeCompare(b.fixture.league?.name||''));
+  }
+
+  // Her filtre render öncesi sinyalleri sıfırla
+  window._signals = [];
+  document.getElementById('matchCount').textContent = filtered.length + ' maç';
+  document.getElementById('matchContainer').innerHTML =
+    filtered.length
+      ? '<div class="matches">' + filtered.map((d,i) => renderMatch(d.fixture, d.stats, i, d.events)).join('') + '</div>'
+      : '<div class="empty-box"><div class="icon">🔍</div><h3>Bu ligde canlı maç yok</h3></div>';
+
+  setTimeout(() => {
+    filtered.forEach(d => {
+      const hS = extractStats(d.stats, d.fixture.teams.home.id, d.fixture.goals.home, d.fixture.fixture?.status?.elapsed, d.events);
+      const aS = extractStats(d.stats, d.fixture.teams.away.id, d.fixture.goals.away, d.fixture.fixture?.status?.elapsed, d.events);
+      const p  = calcGoalProb(hS, aS);
+      const ph = document.getElementById('ph' + d.fixture.fixture.id);
+      const pa = document.getElementById('pa' + d.fixture.fixture.id);
+      if (ph) ph.style.width = p.home + '%';
+      if (pa) pa.style.width = p.away + '%';
+    });
+    // Banner'ı güncelle
+    setTimeout(updateBanner, 400);
+  }, 150);
+}
+
+let refreshTimer;
+
+async function loadMatches() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  btn.textContent = '⟳ Yükleniyor...';
+
+  document.getElementById('matchContainer').innerHTML =
+    '<div class="loading"><div class="spinner"></div><p>Canlı maçlar çekiliyor...</p></div>';
+
+  try {
+    const data = await fetchAPI('/fixtures?live=all');
+
+    if (!data.response || data.response.length === 0) {
+      document.getElementById('matchContainer').innerHTML = `
+        <div class="empty-box">
+          <div class="icon">⚽</div>
+          <h3>Şu an canlı maç yok</h3>
+          <p>Maçlar başladığında otomatik olarak burada görünecek.</p>
+        </div>`;
+      ['totalGoals','hotMatches','liveCount'].forEach(id => document.getElementById(id).textContent = '0');
+      return;
+    }
+
+    const fixtures = data.response; 
+
+    // Statistics + Events birlikte çek (paralel, 120ms aralık)
+    const statsAll  = [];
+    const eventsAll = [];
+    for (const f of fixtures) {
+      try {
+        const [sRes, eRes] = await Promise.all([
+          fetchAPI(`/fixtures/statistics?fixture=${f.fixture.id}`),
+          fetchAPI(`/fixtures/events?fixture=${f.fixture.id}`)
+        ]);
+        statsAll.push(sRes.response  || []);
+        eventsAll.push(eRes.response || []);
+      } catch {
+        statsAll.push([]);
+        eventsAll.push([]);
+      }
+      await new Promise(res => setTimeout(res, 120));
+    }
+
+    // Veriyi global store'a kaydet
+    allFixturesData = fixtures.map((f, i) => {
+      const ev = eventsAll[i];
+      const hS = extractStats(statsAll[i], f.teams.home.id, f.goals.home, f.fixture?.status?.elapsed, ev);
+      const aS = extractStats(statsAll[i], f.teams.away.id, f.goals.away, f.fixture?.status?.elapsed, ev);
+      return {
+        fixture: f,
+        stats:   statsAll[i],
+        events:  ev,
+        nextGoal: calcNextGoalProb(hS, aS, f.fixture?.status?.elapsed)
+      };
+    });
+
+    // Lig filtresini doldur
+    populateLeagueFilter(fixtures.map(f => ({ fixture: f })));
+
+    // Maç sayısı
+    document.getElementById('matchCount').textContent = fixtures.length + ' maç';
+
+    // Filtreli render
+    applyFilters();
+
+    // Özet
+    const totalGoals = fixtures.reduce((s, f) => s + (f.goals.home||0) + (f.goals.away||0), 0);
+    const hotCount = allFixturesData.filter(d => d.nextGoal >= 65).length;
+    document.getElementById('totalGoals').textContent = totalGoals;
+    document.getElementById('hotMatches').textContent = hotCount;
+    window._signals = [];
+    // Tüm maçları tekrar tarayarak sinyalleri güncelle
+    allFixturesData.forEach(d => {
+      if (!d.fixture || !d.stats) return;
+      const fx  = d.fixture;
+      const fid2 = fx.fixture?.id;
+      const min2 = fx.fixture?.status?.elapsed || 45;
+      const hS2  = extractStats(d.stats, fx.teams.home.id, fx.goals.home, min2, d.events);
+      const aS2  = extractStats(d.stats, fx.teams.away.id, fx.goals.away, min2, d.events);
+      const ng2  = calcNextGoalProb(hS2, aS2, min2);
+      generateInsight(hS2, aS2, fx.teams.home.name, fx.teams.away.name, min2, ng2, fx.goals.home, fx.goals.away, fid2);
+    });
+    updateBanner();
+    document.getElementById('liveCount').textContent = fixtures.length;
+
+  } catch(e) {
+    console.error(e);
+    document.getElementById('matchContainer').innerHTML = `
+      <div class="error-box">
+        <h3>🔴 Bağlantı Hatası</h3>
+        <p>Hata: ${e.message}<br><br>
+        API key'ini kontrol et veya tarayıcıda CORS sorununu aşmak için siteyi bir sunucudan aç.<br>
+        <small>Not: HTML dosyasını doğrudan tarayıcıdan açarsan CORS hatası alabilirsin. Bir web sunucusu üzerinden çalıştır.</small>
+        </p>
+      </div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '⟳ Yenile';
+}
+
+// Saat
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}, 1000);
+document.getElementById('clock').textContent =
+  new Date().toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+// ── EN İYİ SİNYAL BANNERINI GÜNCELLE ────────────────
+// ── TELEGRAM AYARLARI ─────────────────────────────────────────
+const TG_BOT_TOKEN  = '8541693658:AAESplLat1zjXuJvFpUtqorLA0XVWxb3oFk';   // @BotFather'dan
+const TG_CHANNEL_ID = '@canlitahminci';        // örn: @canlitahminci
+
+// Aktif fırsat takibi
+let _activeFirsat  = null;   // { key, label, match, minute, fixtureId, startGoals }
+const _sentKeys    = new Set();
+
+async function sendTelegram(text) {
+  if (!TG_BOT_TOKEN || TG_BOT_TOKEN.includes('BURAYA')) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: TG_CHANNEL_ID,
+        text,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true
+      })
+    });
+  } catch(e) { console.warn('Telegram hata:', e); }
+}
+
+function buildNewMsg(signal) {
+  const now = new Date().toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' });
+  const typeEmoji = {
+    gol:'⚽', kg:'🔵', korner:'🚩', kart:'🟨'
+  }[signal.type || 'gol'] || '🔥';
+  return (
+    `🔥 <b>YENİ FIRSAT — ${now}</b>
+` +
+    `━━━━━━━━━━━━━━━━━━━━
+` +
+    `${typeEmoji} <b>${(signal.label||'').toUpperCase()}</b>
+
+` +
+    `⚽ <b>${signal.match}</b>
+` +
+    `⏱ ${signal.minute || '?'}. dakika
+
+` +
+    `📊 <i>${signal.why}</i>
+
+` +
+    `👉 <b>Hemen oyna:</b> https://gir.gg/cevdet`
+  );
+}
+
+function buildResolvedMsg(firsat, result) {
+  const now = new Date().toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' });
+  const statusLine = result === 'won'
+    ? '✅ <b>KAZANDI</b> — Tahmin doğru çıktı!'
+    : result === 'lost'
+    ? '❌ <b>KAYBETTI</b> — Bu sefer olmadı.'
+    : '🏁 <b>SONA ERDİ</b> — Maç bitti veya koşullar değişti.';
+  return (
+    `${statusLine}
+` +
+    `━━━━━━━━━━━━━━━━━━━━
+` +
+    `<b>${firsat.label}</b> | ${firsat.match}
+` +
+    `⏱ ${now}
+
+` +
+    `⬇️ Yeni fırsat aranıyor...`
+  );
+}
+
+// Aktif fırsatın şu an kazanılıp kazanılmadığını maç içinde kontrol et
+function evaluateFirsat(firsat) {
+  const d = allFixturesData.find(d => d.fixture?.fixture?.id === firsat.fixtureId);
+  if (!d) return 'finished'; // Maç listeden düştü
+
+  const status = d.fixture?.fixture?.status?.short || '';
+  const hg     = d.fixture?.goals?.home || 0;
+  const ag     = d.fixture?.goals?.away || 0;
+  const total  = hg + ag;
+  const label  = firsat.label || '';
+  const type   = firsat.type  || '';
+
+  // ── KART bahsi — maç bitmeden de kazanılabilir ──────────
+  if (type === 'kart' || label.toLowerCase().includes('kart')) {
+    // Mevcut kart sayısını istatistiklerden al
+    let yellow = 0, red = 0;
+    (d.stats || []).forEach(side => {
+      (side.statistics || []).forEach(st => {
+        const t = (st.type || '').toLowerCase();
+        const v = parseInt(st.value) || 0;
+        if (t.includes('yellow card'))   yellow = Math.max(yellow, v);
+        if (t.includes('red card'))      red    = Math.max(red, v);
+      });
+    });
+    const cards     = yellow + red * 2;
+    const threshold = parseFloat(label); // "5.5 Üst Kart" → 5.5
+    if (!isNaN(threshold) && cards >= threshold + 0.5) return 'won';
+    // Maç bitti ve eşik aşılmadı
+    if (['FT','AET','PEN'].includes(status)) return 'lost';
+    return 'ongoing';
+  }
+
+  // ── KORNER bahsi — maç bitmeden de kazanılabilir ────────
+  if (type === 'korner' || label.toLowerCase().includes('korner')) {
+    let corners = 0;
+    (d.stats || []).forEach(side => {
+      (side.statistics || []).forEach(st => {
+        if ((st.type || '').toLowerCase().includes('corner')) {
+          corners += parseInt(st.value) || 0;
+        }
+      });
+    });
+    const threshold = parseFloat(label); // "9.5 Üst Korner" → 9.5
+    if (!isNaN(threshold) && corners >= threshold + 0.5) return 'won';
+    if (['FT','AET','PEN'].includes(status)) return 'lost';
+    return 'ongoing';
+  }
+
+  // ── GOL bahsi ───────────────────────────────────────────
+  if (type === 'gol' || label.includes('Üst') || label.includes('Gol')) {
+    const threshold = parseFloat(label); // "2.5 Üst" → 2.5
+    if (!isNaN(threshold) && total > threshold) return 'won';
+    if (['FT','AET','PEN'].includes(status)) {
+      return total > threshold ? 'won' : 'lost';
+    }
+    return 'ongoing';
+  }
+
+  // ── KG VAR ──────────────────────────────────────────────
+  if (type === 'kg' || label.includes('KG Var')) {
+    if (hg > 0 && ag > 0) return 'won';
+    if (['FT','AET','PEN'].includes(status)) return 'lost';
+    return 'ongoing';
+  }
+
+  // Maç bitti ama tip bilinmiyor
+  if (['FT','AET','PEN'].includes(status)) return 'finished';
+  return 'ongoing';
+}
+
+function checkFirsatOutcome(topKey) {
+  if (!_activeFirsat) return;
+
+  // Hâlâ aynı fırsat mı? → Önce kazanıldı mı kontrol et
+  const result = evaluateFirsat(_activeFirsat);
+
+  if (result === 'won' || result === 'lost' || result === 'finished') {
+    sendTelegram(buildResolvedMsg(_activeFirsat, result));
+    _activeFirsat = null;
+    return;
+  }
+
+  // Fırsat değişti (farklı maç/tip öne geçti) → eski bitti
+  if (topKey && topKey !== _activeFirsat.key) {
+    sendTelegram(buildResolvedMsg(_activeFirsat, 'finished'));
+    _activeFirsat = null;
+  }
+}
+
+// ── YAPAY ZEKA ANALİZİ ────────────────────────────────────
+let _lastAIKey  = null;   // Son analiz yapılan sinyal key
+let _aiRunning  = false;  // Eşzamanlı çağrı engeli
+
+// İstatistik context oluştur
+function buildStatsContext(sig) {
+  const fid   = sig.fixtureId;
+  const match = fid ? allFixturesData.find(d => d.fixture?.fixture?.id === fid) : null;
+  if (!match?.stats?.length) return { stats: '', fx: null };
+  const fx  = match.fixture;
+  const hg  = fx?.goals?.home ?? 0;
+  const ag  = fx?.goals?.away ?? 0;
+  const min = sig.minute || fx?.fixture?.status?.elapsed || 45;
+  const hS  = extractStats(match.stats, fx.teams.home.id, hg, min, match.events);
+  const aS  = extractStats(match.stats, fx.teams.away.id, ag, min, match.events);
+  if (!hS.hasRealData && !aS.hasRealData) return { stats: '', fx };
+  const stats = `xG: ${hS.xg.toFixed(2)}/${aS.xg.toFixed(2)} | Şut: ${hS.shots_on}/${aS.shots_on} | Atak: ${hS.dangerous_attacks}/${aS.dangerous_attacks} | Top: %${hS.ball_possession}/%${aS.ball_possession} | Korner: ${hS.corners}/${aS.corners} | Sarı: ${hS.yellow_cards}/${aS.yellow_cards} | Kırmızı: ${hS.red_cards}/${aS.red_cards} | Faul: ${hS.fouls}/${aS.fouls}`;
+  return { stats, fx };
+}
+
+async function callClaude(prompt, maxTokens) {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens || 300,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  const data = await resp.json();
+  return (data.content || []).map(b => b.text || '').join('').trim();
+}
+
+function formatAIText(text) {
+  return text
+    .replace(/📊/g, '<span style="color:var(--blue)">📊</span>')
+    .replace(/⚠️/g,  '<span style="color:var(--gold)">⚠️</span>')
+    .replace(/✅/g,  '<span style="color:var(--green)">✅</span>')
+    .replace(/❌/g,  '<span style="color:var(--red)">❌</span>')
+    .replace(/(GİR)/g,   '<em style="color:var(--green);font-weight:800">GİR</em>')
+    .replace(/(BEKLE)/g, '<em style="color:var(--gold);font-weight:800">BEKLE</em>')
+    .replace(/(ATLA)/g,  '<em style="color:var(--red);font-weight:800">ATLA</em>')
+    .replace(/
+/g, '<br>');
+}
+
+// Claude görev 1: Detaylı bahis analizi
+async function fetchAIAnalysis(sig) {
+  const { stats, fx } = buildStatsContext(sig);
+  const hg     = fx?.goals?.home ?? '?';
+  const ag     = fx?.goals?.away ?? '?';
+  const min    = sig.minute || fx?.fixture?.status?.elapsed || '?';
+  const league = fx?.league?.name || '';
+  const prompt = `Sen bir profesyonel canlı bahis analistisisin. Türkçe, kısa ve net yaz.
+Maç: ${sig.match} | Lig: ${league} | ${min}. dakika | Skor: ${hg}-${ag}
+Öneri: ${sig.label} | Gerekçe: ${sig.why || ''}
+İstatistikler (Ev/Dep): ${stats || 'Yok'}
+
+Şu formatı AYNEN kullan:
+📊 [2 cümle — neden bu bahis mantıklı]
+⚠️ Risk: [1 cümle]
+✅ Karar: GİR / BEKLE / ATLA — [1 cümle gerekçe]`;
+  return callClaude(prompt, 280);
+}
+
+// Claude görev 2: Kısa ikna edici banner hint
+async function fetchAIBannerHint(sig) {
+  const { stats, fx } = buildStatsContext(sig);
+  const min    = sig.minute || fx?.fixture?.status?.elapsed || '?';
+  const prompt = `Canlı bahis uygulaması için ÇARPICI 1 cümlelik Türkçe banner metni yaz.
+Maç: ${sig.match} | ${min}. dakika | Öneri: ${sig.label}
+Veri: ${sig.why || ''} | ${stats || ''}
+KURAL: Sadece 1 cümle. Max 12 kelime. Rakam kullan. "!" koy. Aciliyet hissi ver.
+Örnek: "7 korner + projeksiyon 11.4 — 9.5 Üst için mükemmel an!"
+SADECE cümleyi yaz, başka hiçbir şey yok.`;
+  return callClaude(prompt, 80);
+}
+
+// 30sn döngüsünde sinyal değişince çağrılır
+function maybeRunAI(top) {
+  if (!top) return;
+  const key = top.key || `${top.match}__${top.label}`;
+  if (key === _lastAIKey) return;  // Aynı sinyal, tekrar çağırma
+  runAIAnalysis(top);
+}
+
+async function runAIAnalysis(signal) {
+  if (_aiRunning) return;
+  const sig = signal || _activeFirsat || (window._signals||[]).sort((a,b)=>b.score-a.score)[0];
+  if (!sig) return;
+
+  const key = sig.key || `${sig.match}__${sig.label}`;
+  if (key === _lastAIKey && signal === undefined) return;  // Manuel refresh hariç tekrar çağırma
+
+  _aiRunning  = true;
+  _lastAIKey  = key;
+
+  const panel       = document.getElementById('ai-panel');
+  const textEl      = document.getElementById('ai-panel-text');
+  const contextEl   = document.getElementById('ai-panel-context');
+  const refreshBtn  = document.getElementById('ai-refresh-btn');
+  const aiBannerBtn = document.getElementById('banner-ai-btn');
+  const hintEl      = document.getElementById('banner-reason');
+
+  panel.classList.add('show');
+  textEl.className  = 'ai-panel-text loading';
+  textEl.innerHTML  = '<div class="ai-spinner"></div> Analiz yapılıyor...';
+  contextEl.textContent = `${sig.match} · ${sig.minute||'?'}. dakika · ${sig.label}`;
+  if (refreshBtn)  refreshBtn.disabled = true;
+  if (aiBannerBtn) { aiBannerBtn.disabled = true; aiBannerBtn.textContent = '⟳'; }
+
+  try {
+    // İki görevi paralel çalıştır
+    const [analysisText, bannerHint] = await Promise.all([
+      fetchAIAnalysis(sig),
+      fetchAIBannerHint(sig)
+    ]);
+
+    // 1. Detaylı analiz → AI paneli
+    textEl.className = 'ai-panel-text';
+    textEl.innerHTML = analysisText
+      ? formatAIText(analysisText)
+      : '<span style="color:var(--muted)">Analiz alınamadı.</span>';
+
+    // 2. Kısa hint → banner alt metni
+    if (bannerHint && hintEl) {
+      hintEl.textContent = bannerHint.replace(/^["']|["']$/g, '').trim();
+    }
+
+    // 3. Telegram'a da gönder (sadece aktif fırsat ise)
+    if (analysisText && sig.key && sig.key === _activeFirsat?.key) {
+      sendTelegram(
+        `🤖 <b>AI ANALİZİ</b>
+━━━━━━━━━━━━━━━━━━━━
+` +
+        `<b>${sig.match}</b> · ${sig.minute||'?'}. dakika
+
+` +
+        `<i>${analysisText.replace(/<[^>]+>/g,'')}</i>`
+      );
+    }
+
+  } catch(e) {
+    textEl.className = 'ai-panel-text';
+    textEl.innerHTML = '<span style="color:var(--muted)">Bağlantı hatası.</span>';
+    console.error('AI hata:', e);
+  } finally {
+    _aiRunning = false;
+    if (refreshBtn)  refreshBtn.disabled = false;
+    if (aiBannerBtn) { aiBannerBtn.disabled = false; aiBannerBtn.textContent = '🤖 AI Analizi'; }
+  }
+}
+
+function updateBanner()function updateBanner() {
+  const signals = window._signals || [];
+  const banner  = document.getElementById('opportunity-banner');
+  if (!banner) return;
+  if (signals.length === 0) { banner.classList.remove('show'); return; }
+
+  signals.sort((a, b) => b.score - a.score);
+  const top = signals[0];
+  const key = `${top.match}__${top.label}`;
+  top.key   = key;
+
+  // Banner DOM güncelle
+  document.getElementById('banner-match').innerHTML    = top.match || '—';
+  document.getElementById('banner-action').textContent = top.label || '—';
+  document.getElementById('banner-reason').textContent = top.why   || '—';
+  banner.classList.add('show');
+
+  // 1. Aktif fırsatın sonucunu kontrol et (kazandı mı, değişti mi)
+  checkFirsatOutcome(key);
+
+  // Her döngüde: sinyal değiştiyse AI'ı tetikle (Telegram göndermeden)
+  maybeRunAI(top);
+
+  // 2. Daha önce gönderildi mi?
+  if (_sentKeys.has(key)) return;
+
+  // 3. Yeni fırsat → gönder
+  _sentKeys.add(key);
+  _activeFirsat = { key, label: top.label, match: top.match,
+    minute: top.minute, fixtureId: top.fixtureId, type: top.type };
+  sendTelegram(buildNewMsg(top));
+
+  // Yeni fırsat = AI analizini otomatik çalıştır
+  setTimeout(() => runAIAnalysis(top), 800);
+}
+
+async function updateStatsOnly() {
+  if (!allFixturesData.length) return;
+  if (document.getElementById('refreshBtn').disabled) return;
+
+  try {
+    // Cache sunucusu varsa ondan oku
+    const cacheResult = await fetchCacheServer();
+    if (cacheResult && cacheResult.fixtures && cacheResult.fixtures.length) {
+      // Cache'den taze veriyi al
+      const lastUpd = cacheResult.lastUpdate
+        ? new Date(cacheResult.lastUpdate).toLocaleTimeString('tr-TR')
+        : '—';
+      document.getElementById('clock').textContent = lastUpd;
+
+      // allFixturesData'yı güncelle
+      const newMap = {};
+      cacheResult.fixtures.forEach(d => {
+        newMap[d.fixture?.fixture?.id] = d;
+      });
+
+      allFixturesData = allFixturesData.map(d => {
+        const fid = d.fixture?.fixture?.id;
+        return newMap[fid] ? { fixture: newMap[fid].fixture, stats: newMap[fid].stats, events: newMap[fid].events } : d;
+      });
+
+      applyFilters();
+
+      // Özet sayaçları güncelle
+      let hotCount = 0, goalCount = 0;
+      allFixturesData.forEach(d => {
+        if (!d.fixture) return;
+        goalCount += (d.fixture.goals?.home || 0) + (d.fixture.goals?.away || 0);
+        const min2 = d.fixture.fixture?.status?.elapsed || 45;
+        const hS2  = extractStats(d.stats, d.fixture.teams?.home?.id, d.fixture.goals?.home, min2, d.events);
+        const aS2  = extractStats(d.stats, d.fixture.teams?.away?.id, d.fixture.goals?.away, min2, d.events);
+        const ng2  = calcNextGoalProb(hS2, aS2, min2);
+        if (ng2 >= 65) hotCount++;
+      });
+      document.getElementById('hotMatches').textContent = hotCount;
+      document.getElementById('totalGoals').textContent = goalCount;
+      document.getElementById('liveCount').textContent  = allFixturesData.length;
+
+      window._signals = [];
+      allFixturesData.forEach(d => {
+        if (!d.fixture || !d.stats) return;
+        const fx   = d.fixture;
+        const fid2 = fx.fixture?.id;
+        const min2 = fx.fixture?.status?.elapsed || 45;
+        const hS2  = extractStats(d.stats, fx.teams.home.id, fx.goals.home, min2, d.events);
+        const aS2  = extractStats(d.stats, fx.teams.away.id, fx.goals.away, min2, d.events);
+        const ng2  = calcNextGoalProb(hS2, aS2, min2);
+        generateInsight(hS2, aS2, fx.teams.home.name, fx.teams.away.name, min2, ng2, fx.goals.home, fx.goals.away, fid2);
+      });
+      updateBanner();
+      return;
+    }
+
+    // Fallback: direkt API
+    const data = await fetchAPI('/fixtures?live=all');
+    if (!data.response) return;
+
+    const freshMap = {};
+    data.response.forEach(f => { freshMap[f.fixture.id] = f; });
+
+    // 2. Her maç için yeni stats çek ve DOM'u güncelle
+    for (const d of allFixturesData) {
+      const fresh = freshMap[d.fixture.fixture.id];
+      if (!fresh) continue;
+
+      // Fixture güncelle
+      d.fixture = fresh;
+      const fid = fresh.fixture.id;
+      const min = fresh.fixture?.status?.elapsed;
+      const sh  = fresh.fixture?.status?.short;
+
+      // Taze statistics + events paralel çek
+      let freshStats  = d.stats;
+      let freshEvents = d.events || [];
+      try {
+        const [sr, er] = await Promise.all([
+          fetchAPI(`/fixtures/statistics?fixture=${fid}`),
+          fetchAPI(`/fixtures/events?fixture=${fid}`)
+        ]);
+        if (sr.response && sr.response.length > 0) { freshStats = sr.response;  d.stats  = freshStats; }
+        if (er.response && er.response.length > 0)  { freshEvents = er.response; d.events = freshEvents; }
+      } catch(e) {}
+      await new Promise(r => setTimeout(r, 120));
+
+      const hS   = extractStats(freshStats, fresh.teams.home.id, fresh.goals.home, min, freshEvents);
+      const aS   = extractStats(freshStats, fresh.teams.away.id, fresh.goals.away, min, freshEvents);
+      const prob = calcGoalProb(hS, aS);
+      const ng   = calcNextGoalProb(hS, aS, min);
+      d.nextGoal = ng;
+
+      // ── Dakika ──
+      const minEl = document.querySelector(`[data-fid="${fid}"] .match-minute`);
+      if (minEl) {
+        minEl.textContent = sh === 'HT' ? 'HT' : (min + "'");
+        minEl.className   = sh === 'HT' ? 'match-minute ht' : 'match-minute';
+      }
+
+      // ── Skor ──
+      const scoreEls = document.querySelectorAll(`[data-fid="${fid}"] .score-num`);
+      if (scoreEls.length === 2) {
+        const newH = fresh.goals.home ?? 0;
+        const newA = fresh.goals.away ?? 0;
+        if (scoreEls[0].textContent != newH || scoreEls[1].textContent != newA) {
+          scoreEls[0].textContent = newH;
+          scoreEls[1].textContent = newA;
+          [scoreEls[0], scoreEls[1]].forEach(el => {
+            el.style.color = 'var(--accent3)';
+            el.style.transform = 'scale(1.15)';
+            setTimeout(() => { el.style.color = ''; el.style.transform = ''; }, 1400);
+          });
+        }
+      }
+
+      // ── Prob barları ──
+      const ph = document.getElementById('ph' + fid);
+      const pa = document.getElementById('pa' + fid);
+      if (ph) ph.style.width = prob.home + '%';
+      if (pa) pa.style.width = prob.away + '%';
+
+      // ── İstatistik değerleri (fade animasyonu ile) ──
+      const statMap = {
+        xg:         { home: hS.hasRealData ? hS.xg.toFixed(1) : '—', away: aS.hasRealData ? aS.xg.toFixed(1) : '—' },
+        shots_on:   { home: hS.hasRealData ? String(hS.shots_on) : '—', away: aS.hasRealData ? String(aS.shots_on) : '—' },
+        possession: { home: hS.hasRealData ? hS.ball_possession + '%' : '—', away: aS.hasRealData ? aS.ball_possession + '%' : '—' },
+        attacks:    { home: hS.hasRealData ? String(hS.dangerous_attacks) : '—', away: aS.hasRealData ? String(aS.dangerous_attacks) : '—' },
+        corners:    { home: hS.hasRealData ? String(hS.corners) : '—', away: aS.hasRealData ? String(aS.corners) : '—' },
+        cards: {
+          home: hS.yellow_cards > 0 || hS.red_cards > 0
+            ? `<span style="color:#f5c542">${hS.yellow_cards}🟨</span>${hS.red_cards > 0 ? ` <span style="color:#ff4d6d">${hS.red_cards}🟥</span>` : ''}`
+            : '<span style="color:var(--muted)">—</span>',
+          away: aS.yellow_cards > 0 || aS.red_cards > 0
+            ? `<span style="color:#f5c542">${aS.yellow_cards}🟨</span>${aS.red_cards > 0 ? ` <span style="color:#ff4d6d">${aS.red_cards}🟥</span>` : ''}`
+            : '<span style="color:var(--muted)">—</span>'
+        }
+      };
+
+      document.querySelectorAll(`[data-fid="${fid}"] .live-stat`).forEach(el => {
+        const key  = el.dataset.key;
+        const side = el.dataset.side;
+        const newVal = statMap[key]?.[side];
+        if (newVal === undefined) return;
+        // Kart için innerHTML (HTML içeriği var)
+        if (key === 'cards') {
+          if (el.innerHTML !== String(newVal)) {
+            el.style.opacity = '0';
+            setTimeout(() => { el.innerHTML = String(newVal); el.style.opacity = '1'; }, 280);
+          }
+          return;
+        }
+        const newStr = String(newVal);
+        if (el.textContent !== newStr) {
+          el.style.transition = 'opacity 0.3s, color 0.4s';
+          el.style.opacity    = '0';
+          setTimeout(() => {
+            el.textContent   = newStr;
+            el.style.opacity = '1';
+            el.style.color   = 'var(--accent3)';
+            setTimeout(() => el.style.color = '', 800);
+          }, 300);
+        }
+      });
+
+      // ── Insight kutucuğu ──
+      const insightEl = document.querySelector(`[data-fid="${fid}"] .insight-wrapper`);
+      if (insightEl) {
+        insightEl.style.opacity = '0.5';
+        setTimeout(() => {
+          insightEl.innerHTML = generateInsight(
+            hS, aS,
+            fresh.teams.home.name, fresh.teams.away.name,
+            min, ng, fresh.goals.home, fresh.goals.away
+          );
+          insightEl.style.opacity = '1';
+        }, 350);
+      }
+    }
+
+    // ── Sinyal banner ──
+    setTimeout(updateBanner, 500);
+
+    // ── Özet ──
+    const totalGoals = allFixturesData.reduce((s,d) => s + (d.fixture.goals.home||0) + (d.fixture.goals.away||0), 0);
+    const hotCount   = allFixturesData.filter(d => d.nextGoal >= 65).length;
+    document.getElementById('totalGoals').textContent = totalGoals;
+    document.getElementById('hotMatches').textContent = hotCount;
+    window._signals = [];
+    // Tüm maçları tekrar tarayarak sinyalleri güncelle
+    allFixturesData.forEach(d => {
+      if (!d.fixture || !d.stats) return;
+      const fx = d.fixture; const min2 = fx.fixture?.status?.elapsed || 45;
+      const hS2 = extractStats(d.stats, fx.teams.home.id, fx.goals.home, min2, d.events);
+      const aS2 = extractStats(d.stats, fx.teams.away.id, fx.goals.away, min2, d.events);
+      const ng2  = calcNextGoalProb(hS2, aS2, min2);
+      generateInsight(hS2, aS2, fx.teams.home.name, fx.teams.away.name, min2, ng2, fx.goals.home, fx.goals.away);
+    });
+    updateBanner();
+
+  } catch(e) {
+    console.warn('Canlı güncelleme hatası:', e.message);
+  }
+}
+
+// Her 30sn'de canlı güncelle, her 10 dakikada tam yenile
+setInterval(updateStatsOnly, 30000);
+setInterval(() => {
+  if (!document.getElementById('refreshBtn').disabled) loadMatches();
+}, 600000);
+
+loadMatches();
+
+// 3 saniye sonra telegram popup göster (sadece 1 kez)
+if (!sessionStorage.getItem('tgShown')) {
+  setTimeout(() => {
+    document.getElementById('tgPopup').classList.add('show');
+    sessionStorage.setItem('tgShown', '1');
+  }, 3000);
+}
+</script>
+
+
+</body>
+</html>
