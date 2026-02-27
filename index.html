@@ -1994,17 +1994,14 @@ function buildStatsContext(sig) {
 }
 
 async function callClaude(prompt, maxTokens) {
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+  // Sunucu proxy üzerinden çağır — API key tarayıcıda görünmez
+  const resp = await fetch(CACHE_SERVER + '/ai-analysis', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: maxTokens || 300,
-      messages: [{ role: 'user', content: prompt }]
-    })
+    body: JSON.stringify({ prompt })
   });
   const data = await resp.json();
-  return (data.content || []).map(b => b.text || '').join('').trim();
+  return data.text || '';
 }
 
 function formatAIText(text) {
