@@ -9,6 +9,8 @@
 
 const https = require('https');
 const http  = require('http');
+const fs    = require('fs');
+const path  = require('path');
 
 // ─────────────────────────────────────────────
 // ⚙️  AYARLAR
@@ -176,6 +178,16 @@ const server = http.createServer((req, res) => {
       uptime:     Math.floor(process.uptime()) + 's'
     }));
 
+  } else if (req.url === '/' || req.url === '/index.html') {
+    // Dashboard HTML'i serve et
+    const htmlPath = path.join(__dirname, 'index.html');
+    if (fs.existsSync(htmlPath)) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(fs.readFileSync(htmlPath));
+    } else {
+      res.writeHead(404);
+      res.end('index.html bulunamadı');
+    }
   } else {
     res.writeHead(404);
     res.end(JSON.stringify({ error: 'Not found' }));
