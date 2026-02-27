@@ -34,6 +34,46 @@ let cache = {
 // ─────────────────────────────────────────────
 // API isteği yapıcı
 // ─────────────────────────────────────────────
+// Claude API çağrısı
+function callAnthropic(prompt) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const options = {
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    };
+
+    const req = https.request(options, res => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const text = (json.content || []).map(b => b.text || '').join('').trim();
+          resolve(text);
+        } catch(e) { reject(e); }
+      });
+    });
+
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
+    req.write(body);
+    req.end();
+  });
+}
+
 function apiGet(path) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -167,6 +207,22 @@ const server = http.createServer((req, res) => {
     };
     res.writeHead(200);
     res.end(JSON.stringify(response));
+
+  } else if (req.url === '/ai-analysis' && req.method === 'POST') {
+    // Claude API proxy — key sunucuda kalır, tarayıcıda görünmez
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const { prompt } = JSON.parse(body);
+        const aiResp = await callAnthropic(prompt);
+        res.writeHead(200);
+        res.end(JSON.stringify({ text: aiResp }));
+      } catch(e) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
 
   } else if (req.url === '/health') {
     // Sağlık kontrolü
