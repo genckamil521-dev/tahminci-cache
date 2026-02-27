@@ -135,17 +135,23 @@ async function updateCache() {
 // HTTP Sunucusu
 // ─────────────────────────────────────────────
 const server = http.createServer((req, res) => {
-  // CORS — dashboard her yerden erişebilsin
+  // CORS — her istekte header'ları set et
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Access-Control-Max-Age', '86400');
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(204);
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': '*',
+    });
     res.end();
     return;
   }
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
   if (req.url === '/live') {
     // Tüm veriyi tek seferde ver
