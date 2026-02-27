@@ -215,10 +215,13 @@ const server = http.createServer((req, res) => {
     req.on('end', async () => {
       try {
         const { prompt } = JSON.parse(body);
+        console.log('[AI] İstek alındı, prompt uzunluğu:', prompt?.length);
         const aiResp = await callAnthropic(prompt);
+        console.log('[AI] Yanıt geldi, uzunluk:', aiResp?.length);
         res.writeHead(200);
         res.end(JSON.stringify({ text: aiResp }));
       } catch(e) {
+        console.error('[AI] Hata:', e.message);
         res.writeHead(500);
         res.end(JSON.stringify({ error: e.message }));
       }
