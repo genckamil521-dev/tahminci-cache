@@ -2016,8 +2016,7 @@ function formatAIText(text) {
     .replace(/(GİR)/g,   '<em style="color:var(--green);font-weight:800">GİR</em>')
     .replace(/(BEKLE)/g, '<em style="color:var(--gold);font-weight:800">BEKLE</em>')
     .replace(/(ATLA)/g,  '<em style="color:var(--red);font-weight:800">ATLA</em>')
-    .replace(/
-/g, '<br>');
+    .replace(/\n/g, '<br>');
 }
 
 // Claude görev 1: Detaylı bahis analizi
