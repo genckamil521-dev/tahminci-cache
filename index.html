@@ -731,6 +731,62 @@
     letter-spacing: 0.3px;
   }
 
+  /* ── MAÇ KARTI AI BAR ──────────────────── */
+  .match-ai-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 22px 14px;
+    border-top: 1px solid rgba(77,166,255,0.08);
+    margin-top: 4px;
+  }
+  .match-ai-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(77,166,255,0.07);
+    border: 1px solid rgba(77,166,255,0.2);
+    color: var(--blue);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .match-ai-btn:hover {
+    background: rgba(77,166,255,0.15);
+    border-color: rgba(77,166,255,0.4);
+    transform: translateY(-1px);
+  }
+  .match-ai-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .match-ai-result {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.5;
+    flex: 1;
+    min-height: 0;
+  }
+  .match-ai-result.loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .match-ai-result em {
+    font-style: normal;
+    font-weight: 700;
+  }
+
   /* ── AI ANALİZ PANELI ───────────────────── */
   #ai-panel {
     display: none;
@@ -904,19 +960,11 @@
       <button class="banner-close" onclick="document.getElementById('opportunity-banner').classList.remove('show')">✕</button>
     </div>
     <div class="banner-cta-wrap">
-      <div class="banner-cta-hint">
-        Bu fırsat istatistiklere göre seçildi — <strong>en yüksek beklenti bu maçta.</strong>
-      </div>
-      <div style="display:flex;gap:8px;flex-shrink:0;">
-        <button class="banner-ai-btn" id="banner-ai-btn" onclick="runAIAnalysis()">
-          🤖 AI Analizi
-        </button>
-        <a class="banner-play-btn" id="banner-play-btn" href="https://gir.gg/cevdet" target="_blank" rel="noopener">
-          <span class="btn-arrow">▶</span> HEMEN OYNA
-        </a>
-      </div>
+      <div class="banner-cta-hint" id="banner-reason-hint">En yüksek beklenti bu maçta.</div>
+      <button class="banner-ai-btn" id="banner-ai-btn" onclick="runAIAnalysis()">
+        🤖 AI Analizi
+      </button>
     </div>
-    <div class="banner-disclaimer">Sorumlu oynayın. 18+ | Canlı Tahminci tavsiye verir, bahis kararı size aittir.</div>
   </div>
 
   <!-- AI Analiz Paneli -->
@@ -1638,6 +1686,12 @@ function renderMatch(fixture, statsArr, idx, eventsArr) {
       </div>
     </div>
   <div class="insight-wrapper">${generateInsight(hS, aS, teams.home.name, teams.away.name, minute, nextGoal, goals.home, goals.away, fid)}</div>
+  <div class="match-ai-bar">
+    <button class="match-ai-btn" onclick="event.stopPropagation(); runMatchAI(${fid})">
+      🤖 <span>AI Analizi</span>
+    </button>
+    <div class="match-ai-result" id="ai-result-${fid}"></div>
+  </div>
   </div></div>`;
 }
 
@@ -2046,6 +2100,47 @@ KURAL: Sadece 1 cümle. Max 12 kelime. Rakam kullan. "!" koy. Aciliyet hissi ver
 Örnek: "7 korner + projeksiyon 11.4 — 9.5 Üst için mükemmel an!"
 SADECE cümleyi yaz, başka hiçbir şey yok.`;
   return callClaude(prompt, 80);
+}
+
+// Belirli bir maç için AI analizi çalıştır
+function runMatchAI(fid) {
+  const d = allFixturesData.find(d => d.fixture?.fixture?.id == fid);
+  if (!d) return;
+  const fx  = d.fixture;
+  const min = fx.fixture?.status?.elapsed || 45;
+  const hS  = extractStats(d.stats, fx.teams.home.id, fx.goals.home, min, d.events);
+  const aS  = extractStats(d.stats, fx.teams.away.id, fx.goals.away, min, d.events);
+  const ng  = calcNextGoalProb(hS, aS, min);
+
+  // Bu maç için en iyi sinyali bul
+  window._signals = [];
+  generateInsight(hS, aS, fx.teams.home.name, fx.teams.away.name, min, ng, fx.goals.home, fx.goals.away, fid);
+  const sig = (window._signals || []).sort((a,b) => b.score - a.score)[0];
+
+  const matchName = `${fx.teams.home.name} - ${fx.teams.away.name}`;
+
+  // Sinyal yoksa bile genel analiz yap
+  const fakeSig = sig || {
+    match: matchName,
+    label: 'Genel Analiz',
+    why: `${min}. dakika, skor: ${fx.goals.home}-${fx.goals.away}`,
+    minute: min,
+    fixtureId: fid,
+    type: 'gol',
+    key: `${matchName}__genel`
+  };
+
+  // Buton loading state
+  const btn = document.querySelector(`[onclick*="runMatchAI(${fid})"]`);
+  const resultEl = document.getElementById(`ai-result-${fid}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '⟳ <span>Analiz yapılıyor...</span>'; }
+  if (resultEl) { resultEl.className = 'match-ai-result loading'; resultEl.innerHTML = '<div class="ai-spinner" style="width:10px;height:10px;border-width:1.5px"></div> Analiz yapılıyor...'; }
+
+  // _lastAIKey'i sıfırla ki aynı maç tekrar analiz edilebilsin
+  _lastAIKey = null;
+  runAIAnalysis(fakeSig).finally(() => {
+    if (btn) { btn.disabled = false; btn.innerHTML = '🤖 <span>AI Analizi</span>'; }
+  });
 }
 
 // 30sn döngüsünde sinyal değişince çağrılır
