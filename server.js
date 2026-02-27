@@ -25,17 +25,16 @@ const ANTHROPIC_KEY = process.env.ANTHROPIC_KEY || 'sk-ant-api03-j5z8JgYVW3nibhJ
 // Cache deposu
 // ─────────────────────────────────────────────
 let cache = {
-  fixtures:   [],   // Canlı maçlar
-  stats:      {},   // fixture_id → istatistik
-  events:     {},   // fixture_id → olaylar
-  lastUpdate: null, // Son güncelleme zamanı
-  updating:   false // Güncelleme devam ediyor mu
+  fixtures:   [],
+  stats:      {},
+  events:     {},
+  lastUpdate: null,
+  updating:   false
 };
 
 // ─────────────────────────────────────────────
-// API isteği yapıcı
-// ─────────────────────────────────────────────
 // Claude API çağrısı
+// ─────────────────────────────────────────────
 function callAnthropic(prompt) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
@@ -62,24 +61,47 @@ function callAnthropic(prompt) {
       res.on('end', () => {
         try {
           const json = JSON.parse(data);
+
+          // ── Hata kontrolü ──
+          if (json.error) {
+            console.error('[AI] Anthropic API hatası:', json.error.type, json.error.message);
+            reject(new Error(json.error.message || 'Anthropic API error'));
+            return;
+          }
+
           const text = (json.content || []).map(b => b.text || '').join('').trim();
+          if (!text) {
+            console.warn('[AI] Boş yanıt geldi. Tam response:', JSON.stringify(json).slice(0, 300));
+          }
           resolve(text);
-        } catch(e) { reject(e); }
+        } catch(e) {
+          console.error('[AI] JSON parse hatası:', e.message, 'Raw:', data.slice(0, 200));
+          reject(e);
+        }
       });
     });
 
-    req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
+    req.on('error', err => {
+      console.error('[AI] Request hatası:', err.message);
+      reject(err);
+    });
+    req.setTimeout(20000, () => {
+      req.destroy();
+      reject(new Error('Claude API timeout (20s)'));
+    });
     req.write(body);
     req.end();
   });
 }
 
-function apiGet(path) {
+// ─────────────────────────────────────────────
+// API-Football isteği
+// ─────────────────────────────────────────────
+function apiGet(apiPath) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: API_BASE,
-      path,
+      path: apiPath,
       method: 'GET',
       headers: { 'x-apisports-key': API_KEY }
     };
@@ -115,13 +137,12 @@ function apiGet(path) {
 // Cache güncelleme döngüsü
 // ─────────────────────────────────────────────
 async function updateCache() {
-  if (cache.updating) return; // Önceki bitmeden başlama
+  if (cache.updating) return;
   cache.updating = true;
 
   try {
     console.log(`[${new Date().toLocaleTimeString('tr-TR')}] Cache güncelleniyor...`);
 
-    // 1. Canlı maçları çek
     const fixtures = await apiGet('/fixtures?live=all');
     if (!fixtures.length) {
       console.log('  Canlı maç yok.');
@@ -133,8 +154,6 @@ async function updateCache() {
 
     console.log(`  ${fixtures.length} canlı maç bulundu.`);
 
-    // 2. Her maç için stats + events paralel çek
-    // Aynı anda max 5 istek (rate limit aşmamak için)
     const BATCH = 5;
     const newStats  = {};
     const newEvents = {};
@@ -152,13 +171,11 @@ async function updateCache() {
         newEvents[fid] = events;
       }));
 
-      // Batch'ler arasında kısa bekle
       if (i + BATCH < fixtures.length) {
         await new Promise(r => setTimeout(r, 200));
       }
     }
 
-    // 3. Atomik güncelleme (aynı anda yaz)
     cache.fixtures   = fixtures;
     cache.stats      = newStats;
     cache.events     = newEvents;
@@ -175,32 +192,62 @@ async function updateCache() {
 }
 
 // ─────────────────────────────────────────────
+// Yardımcı: POST body oku
+// ─────────────────────────────────────────────
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+      // 50KB limit — kötüye kullanımı önle
+      if (body.length > 50000) {
+        req.destroy();
+        reject(new Error('Body too large'));
+      }
+    });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
+// ─────────────────────────────────────────────
+// URL parse (query string temizle)
+// ─────────────────────────────────────────────
+function getPathname(url) {
+  try {
+    return new URL(url, 'http://localhost').pathname;
+  } catch {
+    return url.split('?')[0];
+  }
+}
+
+// ─────────────────────────────────────────────
 // HTTP Sunucusu
 // ─────────────────────────────────────────────
-const server = http.createServer((req, res) => {
-  // CORS — her istekte header'ları set et
+const server = http.createServer(async (req, res) => {
+  const pathname = getPathname(req.url);
+
+  // ── CORS — tüm isteklerde (GET, POST, OPTIONS) ──
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key');
   res.setHeader('Access-Control-Max-Age', '86400');
 
+  // Preflight
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': '*',
-    });
+    res.writeHead(204);
     res.end();
     return;
   }
 
+  // JSON content type varsayılan
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
-  if (req.url === '/live') {
-    // Tüm veriyi tek seferde ver
+  // ── /live — Canlı maç verisi ──
+  if (pathname === '/live' && req.method === 'GET') {
     const response = {
       lastUpdate: cache.lastUpdate,
-      fixtures:   cache.fixtures.map(fx => ({
+      fixtures: cache.fixtures.map(fx => ({
         fixture: fx,
         stats:   cache.stats[fx.fixture.id]  || [],
         events:  cache.events[fx.fixture.id] || []
@@ -208,50 +255,83 @@ const server = http.createServer((req, res) => {
     };
     res.writeHead(200);
     res.end(JSON.stringify(response));
+    return;
+  }
 
-  } else if (req.url === '/ai-analysis' && req.method === 'POST') {
-    // Claude API proxy — key sunucuda kalır, tarayıcıda görünmez
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', async () => {
-      try {
-        const { prompt } = JSON.parse(body);
-        console.log('[AI] İstek alındı, prompt uzunluğu:', prompt?.length);
-        const aiResp = await callAnthropic(prompt);
-        console.log('[AI] Yanıt geldi, uzunluk:', aiResp?.length);
-        res.writeHead(200);
-        res.end(JSON.stringify({ text: aiResp }));
-      } catch(e) {
-        console.error('[AI] Hata:', e.message);
-        res.writeHead(500);
-        res.end(JSON.stringify({ error: e.message }));
+  // ── /ai-analysis — Claude API proxy ──
+  if (pathname === '/ai-analysis' && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const { prompt } = JSON.parse(body);
+
+      if (!prompt || typeof prompt !== 'string') {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: 'prompt alanı gerekli' }));
+        return;
       }
-    });
 
-  } else if (req.url === '/health') {
-    // Sağlık kontrolü
+      if (!ANTHROPIC_KEY || ANTHROPIC_KEY.includes('BURAYA')) {
+        console.error('[AI] ANTHROPIC_KEY tanımlı değil!');
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: 'API key tanımlı değil' }));
+        return;
+      }
+
+      console.log(`[AI] İstek alındı — prompt: ${prompt.length} karakter`);
+      const aiText = await callAnthropic(prompt);
+      console.log(`[AI] ✅ Yanıt geldi — ${aiText.length} karakter`);
+
+      res.writeHead(200);
+      res.end(JSON.stringify({ text: aiText }));
+
+    } catch(e) {
+      console.error('[AI] ❌ Hata:', e.message);
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // ── /ai-analysis GET — bilgilendirme ──
+  if (pathname === '/ai-analysis' && req.method === 'GET') {
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      status: 'ok',
+      message: 'AI Analysis endpoint çalışıyor. POST isteği gönderin.',
+      usage: 'POST /ai-analysis { "prompt": "..." }'
+    }));
+    return;
+  }
+
+  // ── /health — Sağlık kontrolü ──
+  if (pathname === '/health') {
     res.writeHead(200);
     res.end(JSON.stringify({
       status:     'ok',
       lastUpdate: cache.lastUpdate,
       fixtures:   cache.fixtures.length,
-      uptime:     Math.floor(process.uptime()) + 's'
+      uptime:     Math.floor(process.uptime()) + 's',
+      aiReady:    !!(ANTHROPIC_KEY && !ANTHROPIC_KEY.includes('BURAYA'))
     }));
+    return;
+  }
 
-  } else if (req.url === '/' || req.url === '/index.html') {
-    // Dashboard HTML'i serve et
+  // ── / veya /index.html — Dashboard ──
+  if (pathname === '/' || pathname === '/index.html') {
     const htmlPath = path.join(__dirname, 'index.html');
     if (fs.existsSync(htmlPath)) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(fs.readFileSync(htmlPath));
     } else {
-      res.writeHead(404);
-      res.end('index.html bulunamadı');
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('index.html bulunamadi');
     }
-  } else {
-    res.writeHead(404);
-    res.end(JSON.stringify({ error: 'Not found' }));
+    return;
   }
+
+  // ── 404 ──
+  res.writeHead(404);
+  res.end(JSON.stringify({ error: 'Not found' }));
 });
 
 // ─────────────────────────────────────────────
@@ -260,17 +340,17 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log('');
   console.log('🚀 Canlı Tahminci Cache Sunucusu başladı');
-  console.log(`   Port    : ${PORT}`);
-  console.log(`   Endpoint: http://localhost:${PORT}/live`);
-  console.log(`   Sağlık  : http://localhost:${PORT}/health`);
+  console.log(`   Port     : ${PORT}`);
+  console.log(`   Endpoint : http://localhost:${PORT}/live`);
+  console.log(`   AI       : http://localhost:${PORT}/ai-analysis (POST)`);
+  console.log(`   Sağlık   : http://localhost:${PORT}/health`);
+  console.log(`   AI Ready : ${!!(ANTHROPIC_KEY && !ANTHROPIC_KEY.includes('BURAYA'))}`);
   console.log('');
 
-  // Hemen bir kere çalıştır, sonra 30sn'de bir
   updateCache();
   setInterval(updateCache, FETCH_INTERVAL);
 });
 
-// Beklenmeyen hataları yakala, sunucu çökmesin
 process.on('uncaughtException', err => {
   console.error('Beklenmeyen hata:', err.message);
 });
