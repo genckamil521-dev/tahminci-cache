@@ -19,6 +19,7 @@ const API_KEY       = 'f3ccf91cf086e59284f51f352ca37f1d';
 const API_BASE      = 'v3.football.api-sports.io';
 const PORT          = process.env.PORT || 3001;
 const FETCH_INTERVAL= 30 * 1000; // 30 saniye
+const ANTHROPIC_KEY = process.env.ANTHROPIC_KEY || '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';
 
 // ─────────────────────────────────────────────
 // Cache deposu
